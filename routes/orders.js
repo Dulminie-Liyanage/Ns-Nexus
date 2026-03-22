@@ -128,4 +128,27 @@ router.put('/:id', (req, res) => {
     });
 });
 
+// GET /orders/:id/items - get items for a specific order
+router.get('/:id/items', (req, res) => {
+    const orderID = req.params.id;
+
+    const query = `
+        SELECT oi.ItemID, oi.QtyRequested, oi.QtyApproved,
+               p.ProductName, p.Unit, p.Price
+        FROM order_items oi
+        JOIN products p ON oi.ProductID = p.ProductID
+        WHERE oi.OrderID = ?
+    `;
+
+    db.query(query, [orderID], (err, results) => {
+        if (err) {
+            return res.status(500).json({ message: 'Database error', error: err });
+        }
+        return res.status(200).json({
+            message: 'Order items fetched successfully',
+            items: results
+        });
+    });
+});
+
 module.exports = router;
