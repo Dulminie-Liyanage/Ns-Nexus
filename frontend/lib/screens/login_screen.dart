@@ -39,11 +39,14 @@ class _LoginScreenState extends State<LoginScreen> {
           arguments: result['data']['user'],
         );
       } else if (role == 'warehouse_manager') {
-        Navigator.pushReplacementNamed(
-          context,
-          '/warehouse',
-          arguments: result['data']['user'],
-        );
+        setState(() {
+          _errorMessage =
+              'Warehouse managers must use the web dashboard. This app is for retailers only.';
+        });
+      } else {
+        setState(() {
+          _errorMessage = 'Access denied. This app is for retailers only.';
+        });
       }
     } else {
       setState(() {
@@ -77,6 +80,16 @@ class _LoginScreenState extends State<LoginScreen> {
                 'Supply Chain Control Tower',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Retailer App',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF1A73E8),
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               const SizedBox(height: 48),
               TextField(
