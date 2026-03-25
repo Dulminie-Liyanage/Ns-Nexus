@@ -76,7 +76,8 @@ router.post('/login', (req, res) => {
                         email: user.Email,
                         role: user.Role,
                         district: user.District,
-                        shopName: user.ShopName
+                        shopName: user.ShopName,
+                        lock_until: user.lock_until // added exact lowercase column
                     }
                 });
             }
