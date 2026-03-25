@@ -30,11 +30,11 @@ router.post('/login', (req, res) => {
 
         // STEP 3: Check password (plain text for MVP)
         if (user.PasswordHash !== password) {
-            const attempts = user.login_attempts + 1;
+            const attempts = user.LoginAttempts + 1;
 
             if (attempts >= 3) {
                 db.query(
-                    'UPDATE users SET login_attempts = ?, IsLocked = 1 WHERE UserID = ?',
+                    'UPDATE users SET LoginAttempts = ?, IsLocked = 1 WHERE UserID = ?',
                     [attempts, user.UserID],
                     (err2) => {
                         if (err2) return res.status(500).json({ message: 'Database error', error: err2 });
@@ -46,7 +46,7 @@ router.post('/login', (req, res) => {
                 );
             } else {
                 db.query(
-                    'UPDATE users SET login_attempts = ? WHERE UserID = ?',
+                    'UPDATE users SET LoginAttempts = ? WHERE UserID = ?',
                     [attempts, user.UserID],
                     (err2) => {
                         if (err2) return res.status(500).json({ message: 'Database error', error: err2 });
@@ -63,7 +63,7 @@ router.post('/login', (req, res) => {
 
         // STEP 4: Password correct → reset attempts
         db.query(
-            'UPDATE users SET login_attempts = 0 WHERE UserID = ?',
+            'UPDATE users SET LoginAttempts = 0 WHERE UserID = ?',
             [user.UserID],
             (err2) => {
                 if (err2) return res.status(500).json({ message: 'Database error', error: err2 });
