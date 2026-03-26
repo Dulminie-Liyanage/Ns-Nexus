@@ -33,8 +33,44 @@ router.post('/', (req, res) => {
         const orderID = result.insertId;
 
         // Save order items
-        const itemValues = items.map(item => [orderID, item.product_id, item.qty_requested, 0]);
-        const itemQuery = 'INSERT INTO order_items (OrderID, ProductID, QtyRequested, QtyApproved) VALUES ?';
+        // First get product prices, then save items with UnitPrice
+const productIds = items.map(item => item.product_id);
+const pricingQuery = 'SELECT ProductID, Price FROM products WHERE ProductID IN (?)';
+
+db.query(pricingQuery, [productIds], (priceErr, priceResults) => {
+    if (priceErr) {
+        return res.status(500).json({ message: 'Error fetching product prices', error: priceErr });
+    }
+
+    // Build price map
+    const priceMap = {};
+    priceResults.forEach(p => { priceMap[p.ProductID] = p.Price; });
+
+    // Calculate total price for the order
+    let totalPrice = 0;
+    const itemValues = items.map(item => {
+        const unitPrice = priceMap[item.product_id] || 0;
+        totalPrice += unitPrice * item.qty_requested;
+        return [orderID, item.product_id, item.qty_requested, 0, unitPrice];
+    });
+
+    const itemQuery = 'INSERT INTO order_items (OrderID, ProductID, QtyRequested, QtyApproved, UnitPrice) VALUES ?';
+
+    db.query(itemQuery, [itemValues], (err2) => {
+        if (err2) {
+            return res.status(500).json({ message: 'Error saving order items', error: err2 });
+        }
+
+        // Update total price on the order
+        db.query('UPDATE orders SET TotalPrice = ? WHERE OrderID = ?', [totalPrice, orderID]);
+
+        return res.status(201).json({
+            message: 'Order placed successfully',
+            order_id: orderID,
+            status: 'pending'
+        });
+    });
+});
         
         db.query(itemQuery, [itemValues], (err2) => {
             if (err2) {
@@ -75,12 +111,14 @@ router.get('/', (req, res) => {
 router.get('/retailer/:id', (req, res) => {
     const retailerID = req.params.id;
 
-    const query = `
-        SELECT o.OrderID, o.Status, o.IsUrgent, o.DeliveryDate, o.RejectionReason, o.CreatedAt
-        FROM orders o
-        WHERE o.RetailerID = ?
-        ORDER BY o.CreatedAt DESC
-    `;
+ const query = `
+    SELECT o.OrderID, o.Status, o.IsUrgent, o.DeliveryDate, 
+           o.RejectionReason, o.CreatedAt, o.TotalPrice, 
+           o.TotalWeight, o.CurrentStage
+    FROM orders o
+    WHERE o.RetailerID = ?
+    ORDER BY o.CreatedAt DESC
+`;
 
     db.query(query, [retailerID], (err, results) => {
         if (err) {
