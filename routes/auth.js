@@ -10,12 +10,10 @@ router.post('/login', (req, res) => {
         return res.status(400).json({ message: 'Email and password are required' });
     }
 
-    // STEP 1: Fetch user by email only
+    // 1. Fetch user by email
     const query = 'SELECT * FROM users WHERE Email = ?';
     db.query(query, [email], (err, results) => {
-        if (err) {
-            return res.status(500).json({ message: 'Database error', error: err });
-        }
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
 
         if (results.length === 0) {
             return res.status(401).json({ message: 'Invalid credentials' });
@@ -23,61 +21,58 @@ router.post('/login', (req, res) => {
 
         const user = results[0];
 
-        // STEP 2: Check if account is locked
+        // 2. CHECK IF LOCKED FIRST
         if (user.IsLocked === 1) {
-            return res.status(403).json({ message: 'Account is locked. Contact support.' });
+            return res.status(403).json({ message: 'This account is locked. Contact support.' });
         }
 
-        // STEP 3: Check password (plain text for MVP)
+        // 3. CHECK PASSWORD
         if (user.PasswordHash !== password) {
-            const attempts = user.LoginAttempts + 1;
+            const newAttempts = user.LoginAttempts + 1;
 
-            if (attempts >= 3) {
+            if (newAttempts >= 3) {
+                // LOCK THE ACCOUNT
                 db.query(
                     'UPDATE users SET LoginAttempts = ?, IsLocked = 1 WHERE UserID = ?',
-                    [attempts, user.UserID],
+                    [newAttempts, user.UserID],
                     (err2) => {
-                        if (err2) return res.status(500).json({ message: 'Database error', error: err2 });
-
-                        return res.status(403).json({
-                            message: 'Account locked after 3 failed attempts'
-                        });
+                        if (err2) return res.status(500).json({ message: 'Database error' });
+                        return res.status(403).json({ message: 'Third incorrect attempt. Your account is now locked. Please contact support.' });
                     }
                 );
             } else {
+                // INCREMENT ATTEMPTS
                 db.query(
                     'UPDATE users SET LoginAttempts = ? WHERE UserID = ?',
-                    [attempts, user.UserID],
+                    [newAttempts, user.UserID],
                     (err2) => {
-                        if (err2) return res.status(500).json({ message: 'Database error', error: err2 });
-
-                        return res.status(401).json({
-                            message: 'Invalid credentials',
-                            attempts_left: 3 - attempts
-                        });
+                        if (err2) return res.status(500).json({ message: 'Database error' });
+                        
+                        const msg = newAttempts === 1 
+                            ? 'First incorrect attempt. Please try again.' 
+                            : 'Second incorrect attempt. One attempt remaining before lock.';
+                        
+                        return res.status(401).json({ message: msg });
                     }
                 );
             }
             return;
         }
 
-        // STEP 4: Password correct → reset attempts
+        // 4. SUCCESS -> Reset attempts
         db.query(
             'UPDATE users SET LoginAttempts = 0 WHERE UserID = ?',
             [user.UserID],
             (err2) => {
-                if (err2) return res.status(500).json({ message: 'Database error', error: err2 });
+                if (err2) return res.status(500).json({ message: 'Database error' });
 
                 return res.status(200).json({
                     message: 'Login successful',
                     user: {
                         id: user.UserID,
                         name: user.Name,
-                        email: user.Email,
                         role: user.Role,
-                        district: user.District,
-                        shopName: user.ShopName,
-                        lock_until: user.lock_until // added exact lowercase column
+                        shopName: user.ShopName
                     }
                 });
             }
