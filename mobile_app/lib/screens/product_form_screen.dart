@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'services/inventory_service.dart';
+import '../services/inventory_service.dart';
 
 class ProductFormScreen extends StatefulWidget {
   final Map<String, dynamic>? product; // null = Add mode, non-null = Edit mode
@@ -123,7 +123,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                       controller: _priceController,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
-                        labelText: 'Price',
+                        labelText: 'Price (LKR)',
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.attach_money),
                       ),
@@ -144,6 +144,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   ),
                 ],
               ),
+              /* Commented out Unit and Stock Level fields
               const SizedBox(height: 16),
               Row(
                 children: [
@@ -171,6 +172,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                   ),
                 ],
               ),
+              */
               const SizedBox(height: 32),
               ElevatedButton(
                 onPressed: _isSubmitting ? null : _submitForm,

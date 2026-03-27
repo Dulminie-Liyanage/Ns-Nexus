@@ -217,7 +217,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: ListTile(
                   title: Text(product['ProductName'] ?? product['productName'] ?? 'Unknown Product'),
-                  subtitle: Text('SKU: ${product['SKU'] ?? 'N/A'} - Price: \$${product['Price']?.toString() ?? '0.00'} (${weight}kg)'),
+                  subtitle: Text('SKU: ${product['SKU'] ?? 'N/A'} - Price: LKR ${product['Price']?.toString() ?? '0.00'} (${weight}kg)'),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -251,7 +251,7 @@ class _NewOrderScreenState extends State<NewOrderScreen> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                    Text('Total Weight: ${_currentTotalWeight.toStringAsFixed(2)} kg', style: const TextStyle(fontWeight: FontWeight.bold)),
-                   Text('Total Price: \$${_currentTotalPrice.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
+                   Text('Total Price: LKR ${_currentTotalPrice.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue)),
                 ],
               ),
               const SizedBox(height: 12),

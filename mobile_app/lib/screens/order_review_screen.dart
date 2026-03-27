@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'services/order_service.dart';
-import 'services/inventory_service.dart';
+import '../services/order_service.dart';      // Added '../' to go out of screens folder
+import '../services/inventory_service.dart';  // Added '../' to go out of screens folder
 
 class OrderReviewScreen extends StatefulWidget {
   final dynamic order;
@@ -255,7 +255,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text('Total Weight: ${_currentTotalWeight.toStringAsFixed(2)}kg', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        Text('Total Price: \$${_currentTotalPrice.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                        Text('Total Price: LKR ${_currentTotalPrice.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
                       ],
                     ),
                   ],
@@ -291,7 +291,7 @@ class _OrderReviewScreenState extends State<OrderReviewScreen> {
 
                           return ListTile(
                             title: Text('$name (Req: $requestedQty)'),
-                            subtitle: Text('Unit Price: \$${p.toStringAsFixed(2)}\nLine Total: \$${lineTotal.toStringAsFixed(2)}'),
+                            subtitle: Text('Unit Price: LKR ${p.toStringAsFixed(2)}\nLine Total: LKR ${lineTotal.toStringAsFixed(2)}'),
                             isThreeLine: true,
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,

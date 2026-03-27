@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'services/order_service.dart';
+import '../services/order_service.dart';
 import 'order_review_screen.dart';
 
 class WarehouseOrdersScreen extends StatefulWidget {
@@ -196,25 +196,40 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen> with Sing
           String buttonLabel;
           IconData buttonIcon;
           Color buttonColor;
+          bool isDisabled = false;
 
           if (status == 'approved' || status == 'partially_approved') {
+            // Stage 2 → Start Packing
             buttonLabel = 'Start Packing';
             buttonIcon = Icons.inventory_2;
             buttonColor = Colors.orange;
-          } else if (currentStage >= 7) {
-            buttonLabel = 'Delivered ✓';
-            buttonIcon = Icons.check_circle;
-            buttonColor = Colors.green;
-          } else {
-            buttonLabel = 'Next Step → $nextStageName';
-            buttonIcon = Icons.arrow_forward;
+          } else if (currentStage == 3) {
+            // Stage 3 → Ship
+            buttonLabel = 'Ship Order';
+            buttonIcon = Icons.local_shipping;
             buttonColor = Colors.blue;
+          } else {
+            /* Commented out: At Hub, Out for Delivery, and Received (Delivered) stages disabled
+            if (currentStage >= 7) {
+              buttonLabel = 'Delivered ✓';
+              buttonIcon = Icons.check_circle;
+              buttonColor = Colors.green;
+            } else {
+              buttonLabel = 'Next Step → $nextStageName';
+              buttonIcon = Icons.arrow_forward;
+              buttonColor = Colors.blue;
+            }
+            */
+            buttonLabel = 'Stage $currentStage — No action available';
+            buttonIcon = Icons.hourglass_empty;
+            buttonColor = Colors.grey;
+            isDisabled = true;
           }
 
           return _buildOrderCard(order, actionButton: SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: (currentStage >= 7 || isAdvancing) ? null : () => _advanceNextStage(order),
+              onPressed: (isDisabled || isAdvancing) ? null : () => _advanceNextStage(order),
               icon: isAdvancing
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                   : Icon(buttonIcon),
@@ -408,7 +423,7 @@ class _HistoryTabViewState extends State<_HistoryTabView> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Total Weight: ${totalWeight}kg', style: const TextStyle(fontWeight: FontWeight.w500)),
-                      Text('Total: \$$totalPrice', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16)),
+                      Text('Total: LKR $totalPrice', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16)),
                     ],
                   ),
                 ],
@@ -461,7 +476,7 @@ class _HistoryTabViewState extends State<_HistoryTabView> {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  Text('Total: \$$totalPrice', style: const TextStyle(fontWeight: FontWeight.w500)),
+                  Text('Total: LKR $totalPrice', style: const TextStyle(fontWeight: FontWeight.w500)),
                   const SizedBox(height: 12),
                   Container(
                     width: double.infinity,

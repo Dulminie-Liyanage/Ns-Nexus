@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'services/auth_service.dart';
-import 'services/inventory_service.dart';
+import '../services/auth_service.dart';
+import '../services/inventory_service.dart';
 import 'login_screen.dart';
 import 'warehouse_orders_screen.dart';
 import 'product_form_screen.dart';
@@ -156,7 +156,7 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('SKU: ${product['SKU'] ?? 'N/A'} - Price: \$${price}'),
+                            Text('SKU: ${product['SKU'] ?? 'N/A'} - Price: LKR ${price}'),
                             if (stockLevel != null)
                               Text(
                                 'Stock: $stockLevel',

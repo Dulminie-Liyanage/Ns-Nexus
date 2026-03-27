@@ -77,7 +77,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                         color: isModified ? Colors.orange.withOpacity(0.2) : null,
                         child: ListTile(
                           title: Text(name, style: TextStyle(color: isModified ? Colors.deepOrange : Colors.black, fontWeight: isModified ? FontWeight.bold : FontWeight.normal)),
-                          subtitle: Text('Requested: $qReq   |   Approved: $qApprv\nUnit Price: \$${p.toStringAsFixed(2)}  —  Line Total: \$${lineTotal.toStringAsFixed(2)}'),
+                          subtitle: Text('Requested: $qReq   |   Approved: $qApprv\nUnit Price: LKR ${p.toStringAsFixed(2)}  —  Line Total: LKR ${lineTotal.toStringAsFixed(2)}'),
                           isThreeLine: true,
                         ),
                       );
@@ -166,11 +166,13 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                   Text('Order ID: #$orderId', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black87)),
+                  const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Status: ${order['Status'] ?? 'Pending'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      Text('\$${order['TotalPrice']?.toString() ?? '0.00'}', style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text('LKR ${order['TotalPrice']?.toString() ?? '0.00'}', style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 16)),
                     ],
                   ),
                   const SizedBox(height: 8),

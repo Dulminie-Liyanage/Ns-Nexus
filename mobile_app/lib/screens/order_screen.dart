@@ -12,7 +12,7 @@ class OrderScreen extends StatefulWidget {
 
 class _OrderScreenState extends State<OrderScreen> {
   final OrderService _orderService = OrderService();
-  
+
   DateTime? _selectedDate;
   bool _isUrgent = false;
   bool _isLoading = false;
@@ -35,18 +35,7 @@ class _OrderScreenState extends State<OrderScreen> {
 
   Future<void> _placeOrder() async {
     if (_selectedDate == null) {
-      setState(() {
-        _errorMessage = 'Please select a delivery date.';
-      });
-      return;
-    }
-
-    // Checking if date is strictly less than 48 hours away
-    final diff = _selectedDate!.difference(DateTime.now());
-    if (diff.inHours < 48 && !_isUrgent) {
-      setState(() {
-        _errorMessage = 'Standard orders require a 48-hour notice. Please select a later date or mark as Urgent.';
-      });
+      setState(() => _errorMessage = 'Please select a delivery date.');
       return;
     }
 
@@ -56,12 +45,34 @@ class _OrderScreenState extends State<OrderScreen> {
     });
 
     try {
-      final productId = widget.product['ProductID'] ?? widget.product['productId'] ?? widget.product['id'] ?? widget.product['Id'] ?? widget.product['_id'];
-      
-      final dateString = "${_selectedDate!.year.toString().padLeft(4, '0')}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}";
+      // 1. Get the Product ID
+      final productId =
+          widget.product['ProductID'] ?? widget.product['id'] ?? 0;
 
-      await _orderService.placeOrder(productId, dateString, _isUrgent ? 1 : 0);
-      
+      // 2. Format the Date
+      final dateString =
+          "${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}";
+
+      // 3. Get Retailer ID (Assuming it's 1 for now, or fetch from your Auth provider)
+      // Tip: In a real app, get this from SharedPreferences
+      int retailerId = 1;
+
+      // 4. Format Items as a List of Maps (What your service expects!)
+      List<Map<String, dynamic>> items = [
+        {
+          "product_id": productId,
+          "quantity": 1, // Or add a quantity controller later
+        },
+      ];
+
+      // 5. CALL THE SERVICE CORRECTLY
+      await _orderService.placeOrder(
+        retailerId,
+        items,
+        dateString,
+        _isUrgent ? 1 : 0,
+      );
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Order placed successfully!')),
@@ -73,11 +84,7 @@ class _OrderScreenState extends State<OrderScreen> {
         _errorMessage = e.toString().replaceFirst('Exception: ', '');
       });
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -99,15 +106,17 @@ class _OrderScreenState extends State<OrderScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Price: \$$price',
+              'Price: LKR $price',
               style: const TextStyle(fontSize: 16, color: Colors.grey),
             ),
             const SizedBox(height: 32),
-            
+
             ListTile(
-              title: Text(_selectedDate == null 
-                  ? 'Select Delivery Date' 
-                  : 'Delivery Date: ${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'),
+              title: Text(
+                _selectedDate == null
+                    ? 'Select Delivery Date'
+                    : 'Delivery Date: ${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}',
+              ),
               trailing: const Icon(Icons.calendar_today),
               shape: RoundedRectangleBorder(
                 side: const BorderSide(color: Colors.grey),
@@ -116,14 +125,16 @@ class _OrderScreenState extends State<OrderScreen> {
               onTap: _pickDate,
             ),
             const SizedBox(height: 16),
-            
+
             CheckboxListTile(
               title: const Text('Mark as Urgent'),
               value: _isUrgent,
               onChanged: (val) {
                 setState(() {
                   _isUrgent = val ?? false;
-                  if (_isUrgent && _errorMessage != null && _errorMessage!.contains('48-hour')) {
+                  if (_isUrgent &&
+                      _errorMessage != null &&
+                      _errorMessage!.contains('48-hour')) {
                     _errorMessage = null;
                   }
                 });
@@ -131,15 +142,12 @@ class _OrderScreenState extends State<OrderScreen> {
               controlAffinity: ListTileControlAffinity.leading,
               contentPadding: EdgeInsets.zero,
             ),
-            
+
             if (_errorMessage != null) ...[
               const SizedBox(height: 16),
-              Text(
-                _errorMessage!,
-                style: const TextStyle(color: Colors.red),
-              ),
+              Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
             ],
-            
+
             const Spacer(),
             if (_isLoading)
               const Center(child: CircularProgressIndicator())
@@ -149,7 +157,10 @@ class _OrderScreenState extends State<OrderScreen> {
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
-                child: const Text('Place Order', style: TextStyle(fontSize: 16)),
+                child: const Text(
+                  'Place Order',
+                  style: TextStyle(fontSize: 16),
+                ),
               ),
             const SizedBox(height: 24),
           ],
