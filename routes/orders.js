@@ -231,4 +231,25 @@ router.get('/:id/items', (req, res) => {
     });
 });
 
+// POST /orders/:id/next-stage - Advance the progress bar for an order
+router.post('/:id/next-stage', (req, res) => {
+    const orderID = req.params.id;
+    
+    // We use LEAST(CurrentStage + 1, 7) so it never goes above Stage 7 (Delivered)
+    const sql = 'UPDATE orders SET CurrentStage = LEAST(CurrentStage + 1, 7) WHERE OrderID = ?';
+    
+    db.query(sql, [orderID], (err, result) => {
+        if (err) {
+            console.error("Stage Update Error:", err);
+            return res.status(500).json({ message: 'Failed to advance stage', error: err });
+        }
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Order not found' });
+        }
+
+        res.status(200).json({ message: `Order ${orderID} advanced to the next stage!` });
+    });
+});
+
 module.exports = router;
