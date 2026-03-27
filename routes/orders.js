@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../config/db');
 
 // POST /orders - retailer places an order
-// POST /orders - retailer places an order
+// POST /orders - retailer places an order with Total Price & Weight calculation
 router.post('/', (req, res) => {
     const { retailer_id, delivery_date, is_urgent, items } = req.body;
 
@@ -11,42 +11,34 @@ router.post('/', (req, res) => {
         return res.status(400).json({ message: 'Missing required fields' });
     }
 
-    // 48 hour rule check for standard orders
-    if (!is_urgent) {
-        const now = new Date();
-        const delivery = new Date(delivery_date);
-        const diffHours = (delivery - now) / (1000 * 60 * 60);
-
-        if (diffHours < 48) {
-            return res.status(400).json({ 
-                message: 'Standard orders must be placed at least 48 hours before delivery date' 
-            });
-        }
-    }
-
-    // 1. Save main Order Header
+    // 1. Create the Order Header
     const orderQuery = 'INSERT INTO orders (RetailerID, Status, IsUrgent, DeliveryDate) VALUES (?, ?, ?, ?)';
     db.query(orderQuery, [retailer_id, 'pending', is_urgent ? 1 : 0, delivery_date], (err, result) => {
         if (err) return res.status(500).json({ message: 'Database error', error: err });
 
         const orderID = result.insertId;
-
-        // 2. Fetch current prices to ensure the total is accurate
         const productIds = items.map(item => item.product_id);
-        const pricingQuery = 'SELECT ProductID, Price FROM products WHERE ProductID IN (?)';
+        
+        // 2. Fetch Prices AND Weights from your products table
+        const pricingQuery = 'SELECT ProductID, Price, Weight FROM products WHERE ProductID IN (?)';
 
-        db.query(pricingQuery, [productIds], (priceErr, priceResults) => {
-            if (priceErr) return res.status(500).json({ message: 'Error fetching prices', error: priceErr });
+        db.query(pricingQuery, [productIds], (priceErr, productResults) => {
+            if (priceErr) return res.status(500).json({ message: 'Error fetching product data', error: priceErr });
 
-            const priceMap = {};
-            priceResults.forEach(p => { priceMap[p.ProductID] = p.Price; });
+            const productMap = {};
+            productResults.forEach(p => { 
+                productMap[p.ProductID] = { price: p.Price, weight: p.Weight }; 
+            });
 
             let totalPrice = 0;
+            let totalWeight = 0;
+
             const itemValues = items.map(item => {
-                const unitPrice = priceMap[item.product_id] || 0;
-                totalPrice += unitPrice * item.qty_requested;
-                // [OrderID, ProductID, QtyRequested, QtyApproved, UnitPrice]
-                return [orderID, item.product_id, item.qty_requested, 0, unitPrice];
+                const pData = productMap[item.product_id] || { price: 0, weight: 0 };
+                totalPrice += pData.price * item.qty_requested;
+                totalWeight += pData.weight * item.qty_requested;
+                
+                return [orderID, item.product_id, item.qty_requested, 0, pData.price];
             });
 
             // 3. Save Order Items
@@ -54,15 +46,16 @@ router.post('/', (req, res) => {
             db.query(itemQuery, [itemValues], (err2) => {
                 if (err2) return res.status(500).json({ message: 'Error saving order items', error: err2 });
 
-                // 4. Update the total price in the main order table
-                db.query('UPDATE orders SET TotalPrice = ? WHERE OrderID = ?', [totalPrice, orderID], (updateErr) => {
-                    if (updateErr) console.error("Total price update failed", updateErr);
+                // 4. Update the Order Header with calculated totals
+                db.query('UPDATE orders SET TotalPrice = ?, TotalWeight = ? WHERE OrderID = ?', 
+                [totalPrice, totalWeight, orderID], (updateErr) => {
+                    if (updateErr) console.error("Totals update failed", updateErr);
                     
                     return res.status(201).json({
                         message: 'Order placed successfully',
                         order_id: orderID,
                         total_price: totalPrice,
-                        status: 'pending'
+                        total_weight: totalWeight
                     });
                 });
             });
