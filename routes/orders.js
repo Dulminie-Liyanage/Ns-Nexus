@@ -109,7 +109,7 @@ router.get('/retailer/:id', (req, res) => {
     });
 });
 
-// PUT /orders/:id - warehouse manager approves or rejects
+// PUT /orders/:id - Handle Approval, Rejection, and Partial Approval
 router.put('/:id', (req, res) => {
     const orderID = req.params.id;
     const { status, rejection_reason, items } = req.body;
@@ -118,32 +118,66 @@ router.put('/:id', (req, res) => {
         return res.status(400).json({ message: 'Status is required' });
     }
 
-    if (status === 'rejected' && !rejection_reason) {
-        return res.status(400).json({ message: 'Rejection reason is required when rejecting an order' });
-    }
+    // --- CASE 1: PARTIAL APPROVAL ---
+    if (status === 'partially_approved' && items && items.length > 0) {
+        db.beginTransaction((err) => {
+            if (err) return res.status(500).json({ message: 'Transaction Error', error: err });
 
-    const updateOrder = 'UPDATE orders SET Status = ?, RejectionReason = ? WHERE OrderID = ?';
-    db.query(updateOrder, [status, rejection_reason || null, orderID], (err) => {
-        if (err) {
-            return res.status(500).json({ message: 'Database error', error: err });
-        }
+            // Update order status and move to Stage 2 (Approved/Processing)
+            const updateOrder = 'UPDATE orders SET Status = ?, CurrentStage = 2 WHERE OrderID = ?';
+            db.query(updateOrder, [status, orderID], (err1) => {
+                if (err1) return db.rollback(() => res.status(500).json(err1));
 
-        // If partially approved, update qty_approved for each item
-        if (status === 'partially_approved' && items && items.length > 0) {
-            items.forEach(item => {
-                const updateItem = 'UPDATE order_items SET QtyApproved = ? WHERE OrderID = ? AND ProductID = ?';
-                db.query(updateItem, [item.qty_approved, orderID, item.product_id]);
+                // Update each item with the specific quantity the manager approved
+                const queries = items.map(item => {
+                    return new Promise((resolve, reject) => {
+                        const sql = 'UPDATE order_items SET QtyApproved = ? WHERE OrderID = ? AND ProductID = ?';
+                        db.query(sql, [item.qty_approved, orderID, item.product_id], (err2) => {
+                            if (err2) reject(err2);
+                            resolve();
+                        });
+                    });
+                });
+
+                Promise.all(queries)
+                    .then(() => {
+                        db.commit((err3) => {
+                            if (err3) return db.rollback(() => res.status(500).json(err3));
+                            res.status(200).json({ message: 'Order partially approved and quantities updated' });
+                        });
+                    })
+                    .catch(err4 => db.rollback(() => res.status(500).json(err4)));
             });
-        }
-
-        return res.status(200).json({
-            message: `Order ${status} successfully`,
-            order_id: orderID,
-            status: status
         });
-    });
-});
 
+    // --- CASE 2: FULL APPROVAL ---
+    } else if (status === 'approved') {
+        const approveQuery = 'UPDATE orders SET Status = ?, CurrentStage = 2 WHERE OrderID = ?';
+        db.query(approveQuery, [status, orderID], (err) => {
+            if (err) return res.status(500).json({ message: 'Database error', error: err });
+            
+            // Also set QtyApproved = QtyRequested for all items since it's a full approval
+            const syncItems = 'UPDATE order_items SET QtyApproved = QtyRequested WHERE OrderID = ?';
+            db.query(syncItems, [orderID]);
+
+            res.status(200).json({ message: 'Order fully approved successfully' });
+        });
+
+    // --- CASE 3: REJECTION ---
+    } else if (status === 'rejected') {
+        if (!rejection_reason) {
+            return res.status(400).json({ message: 'Rejection reason is required' });
+        }
+        const rejectQuery = 'UPDATE orders SET Status = ?, RejectionReason = ? WHERE OrderID = ?';
+        db.query(rejectQuery, [status, rejection_reason, orderID], (err) => {
+            if (err) return res.status(500).json({ message: 'Database error', error: err });
+            res.status(200).json({ message: 'Order rejected successfully' });
+        });
+
+    } else {
+        res.status(400).json({ message: 'Invalid status provided' });
+    }
+});
 // GET /orders/:id/items - get items for a specific order
 router.get('/:id/items', (req, res) => {
     const orderID = req.params.id;
