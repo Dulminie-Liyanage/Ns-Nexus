@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../config/db');
 
 // POST /orders - retailer places an order
+// POST /orders - retailer places an order
 router.post('/', (req, res) => {
     const { retailer_id, delivery_date, is_urgent, items } = req.body;
 
@@ -23,68 +24,52 @@ router.post('/', (req, res) => {
         }
     }
 
-    // Save order
+    // 1. Save main Order Header
     const orderQuery = 'INSERT INTO orders (RetailerID, Status, IsUrgent, DeliveryDate) VALUES (?, ?, ?, ?)';
     db.query(orderQuery, [retailer_id, 'pending', is_urgent ? 1 : 0, delivery_date], (err, result) => {
-        if (err) {
-            return res.status(500).json({ message: 'Database error', error: err });
-        }
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
 
         const orderID = result.insertId;
 
-        // Save order items
-        // First get product prices, then save items with UnitPrice
-const productIds = items.map(item => item.product_id);
-const pricingQuery = 'SELECT ProductID, Price FROM products WHERE ProductID IN (?)';
+        // 2. Fetch current prices to ensure the total is accurate
+        const productIds = items.map(item => item.product_id);
+        const pricingQuery = 'SELECT ProductID, Price FROM products WHERE ProductID IN (?)';
 
-db.query(pricingQuery, [productIds], (priceErr, priceResults) => {
-    if (priceErr) {
-        return res.status(500).json({ message: 'Error fetching product prices', error: priceErr });
-    }
+        db.query(pricingQuery, [productIds], (priceErr, priceResults) => {
+            if (priceErr) return res.status(500).json({ message: 'Error fetching prices', error: priceErr });
 
-    // Build price map
-    const priceMap = {};
-    priceResults.forEach(p => { priceMap[p.ProductID] = p.Price; });
+            const priceMap = {};
+            priceResults.forEach(p => { priceMap[p.ProductID] = p.Price; });
 
-    // Calculate total price for the order
-    let totalPrice = 0;
-    const itemValues = items.map(item => {
-        const unitPrice = priceMap[item.product_id] || 0;
-        totalPrice += unitPrice * item.qty_requested;
-        return [orderID, item.product_id, item.qty_requested, 0, unitPrice];
-    });
+            let totalPrice = 0;
+            const itemValues = items.map(item => {
+                const unitPrice = priceMap[item.product_id] || 0;
+                totalPrice += unitPrice * item.qty_requested;
+                // [OrderID, ProductID, QtyRequested, QtyApproved, UnitPrice]
+                return [orderID, item.product_id, item.qty_requested, 0, unitPrice];
+            });
 
-    const itemQuery = 'INSERT INTO order_items (OrderID, ProductID, QtyRequested, QtyApproved, UnitPrice) VALUES ?';
+            // 3. Save Order Items
+            const itemQuery = 'INSERT INTO order_items (OrderID, ProductID, QtyRequested, QtyApproved, UnitPrice) VALUES ?';
+            db.query(itemQuery, [itemValues], (err2) => {
+                if (err2) return res.status(500).json({ message: 'Error saving order items', error: err2 });
 
-    db.query(itemQuery, [itemValues], (err2) => {
-        if (err2) {
-            return res.status(500).json({ message: 'Error saving order items', error: err2 });
-        }
-
-        // Update total price on the order
-        db.query('UPDATE orders SET TotalPrice = ? WHERE OrderID = ?', [totalPrice, orderID]);
-
-        return res.status(201).json({
-            message: 'Order placed successfully',
-            order_id: orderID,
-            status: 'pending'
-        });
-    });
-});
-        
-        db.query(itemQuery, [itemValues], (err2) => {
-            if (err2) {
-                return res.status(500).json({ message: 'Error saving order items', error: err2 });
-            }
-
-            return res.status(201).json({
-                message: 'Order placed successfully',
-                order_id: orderID,
-                status: 'pending'
+                // 4. Update the total price in the main order table
+                db.query('UPDATE orders SET TotalPrice = ? WHERE OrderID = ?', [totalPrice, orderID], (updateErr) => {
+                    if (updateErr) console.error("Total price update failed", updateErr);
+                    
+                    return res.status(201).json({
+                        message: 'Order placed successfully',
+                        order_id: orderID,
+                        total_price: totalPrice,
+                        status: 'pending'
+                    });
+                });
             });
         });
     });
 });
+
 
 // GET /orders - warehouse manager sees all orders
 router.get('/', (req, res) => {
