@@ -139,38 +139,40 @@ router.put('/:id', (req, res) => {
                     });
                 });
 
-                Promise.all(queries)
-                    .then(() => {
-                        // --- NEW: Recalculate Order Totals before committing ---
-                        const recalculateQuery = `
-                            UPDATE orders o
-                            SET 
-                                TotalPrice = (
-                                    SELECT COALESCE(SUM(oi.QtyApproved * oi.UnitPrice), 0) 
-                                    FROM order_items oi 
-                                    WHERE oi.OrderID = o.OrderID
-                                ),
-                                TotalWeight = (
-                                    SELECT COALESCE(SUM(oi.QtyApproved * p.Weight), 0) 
-                                    FROM order_items oi 
-                                    JOIN products p ON oi.ProductID = p.ProductID 
-                                    WHERE oi.OrderID = o.OrderID
-                                )
-                            WHERE o.OrderID = ?
-                        `;
+               Promise.all(queries)
+    .then(() => {
+        // IMPROVED RECALCULATION: 
+        // 1. We use IFNULL/COALESCE on Weight so a missing weight doesn't break the math.
+        // 2. We ensure we are only summing items for THIS specific order.
+        const recalculateQuery = `
+            UPDATE orders o
+            SET 
+                TotalPrice = (
+                    SELECT SUM(IFNULL(oi.QtyApproved, 0) * IFNULL(oi.UnitPrice, 0)) 
+                    FROM order_items oi 
+                    WHERE oi.OrderID = o.OrderID
+                ),
+                TotalWeight = (
+                    SELECT SUM(IFNULL(oi.QtyApproved, 0) * IFNULL(p.Weight, 0)) 
+                    FROM order_items oi 
+                    JOIN products p ON oi.ProductID = p.ProductID 
+                    WHERE oi.OrderID = o.OrderID
+                )
+            WHERE o.OrderID = ?
+        `;
 
-                        db.query(recalculateQuery, [orderID], (errRecalc) => {
-                            if (errRecalc) {
-                                return db.rollback(() => res.status(500).json({ message: 'Recalculation error', error: errRecalc }));
-                            }
+        db.query(recalculateQuery, [orderID], (errRecalc) => {
+            if (errRecalc) {
+                console.error("Recalc Error:", errRecalc); // Log this so you can see it in terminal!
+                return db.rollback(() => res.status(500).json({ message: 'Recalculation error', error: errRecalc }));
+            }
 
-                            // Now that totals are correct, commit everything
-                            db.commit((err3) => {
-                                if (err3) return db.rollback(() => res.status(500).json(err3));
-                                res.status(200).json({ message: 'Order partially approved and totals updated!' });
-                            });
-                        });
-                    })
+            db.commit((err3) => {
+                if (err3) return db.rollback(() => res.status(500).json(err3));
+                res.status(200).json({ message: 'Order updated and verified!' });
+            });
+        });
+    })
                     .catch(err4 => db.rollback(() => res.status(500).json(err4)));
             });
         });
