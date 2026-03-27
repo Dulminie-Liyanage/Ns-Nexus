@@ -209,26 +209,33 @@ router.get('/:id/items', (req, res) => {
 // POST /orders/:id/next-stage
 router.post('/:id/next-stage', (req, res) => {
     const orderID = req.params.id;
-    
-    // 1. Get current state
-    db.query('SELECT CurrentStage, Status FROM orders WHERE OrderID = ?', [orderID], (err, results) => {
-        if (err) return res.status(500).json({ message: 'Database error', error: err });
-        if (results.length === 0) return res.status(404).json({ message: 'Order ID not found' });
+    console.log(`>>> Advancing Stage for Order: ${orderID}`); // Check your terminal for this!
 
-        let nextStage = results[0].CurrentStage + 1;
+    // 1. Fetch current data
+    db.query('SELECT CurrentStage, Status FROM orders WHERE OrderID = ?', [orderID], (err, results) => {
+        if (err) {
+            console.error("DB Error on Fetch:", err);
+            return res.status(500).json({ message: 'Database error', error: err });
+        }
+        if (results.length === 0) return res.status(404).json({ message: 'Order not found' });
+
+        let nextStage = (results[0].CurrentStage || 1) + 1;
         let newStatus = 'processing';
 
-        // 2. Logic: If it reaches the end, it's Delivered
         if (nextStage >= 7) {
             nextStage = 7;
             newStatus = 'delivered';
         }
 
-        // 3. Update both Stage AND Status
+        // 2. Update
         const updateSql = 'UPDATE orders SET CurrentStage = ?, Status = ? WHERE OrderID = ?';
         db.query(updateSql, [nextStage, newStatus, orderID], (updateErr) => {
-            if (updateErr) return res.status(500).json({ message: 'Update failed', error: updateErr });
+            if (updateErr) {
+                console.error("DB Error on Update:", updateErr);
+                return res.status(500).json({ message: 'Update failed', error: updateErr });
+            }
             
+            console.log(`>>> Successfully moved to Stage ${nextStage} and Status ${newStatus}`);
             res.status(200).json({ 
                 message: 'Stage Advanced', 
                 newStage: nextStage, 
