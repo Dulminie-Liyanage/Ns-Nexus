@@ -209,17 +209,23 @@ router.get('/:id/items', (req, res) => {
 // POST /orders/:id/next-stage
 router.post('/:id/next-stage', (req, res) => {
     const orderID = req.params.id;
-    console.log(`>>> Advancing Stage for Order: ${orderID}`); // Check your terminal for this!
 
-    // 1. Fetch current data
+    // 1. Check if ID is actually there
+    if (!orderID || orderID === 'undefined' || orderID === '[object Object]') {
+        console.error(">>> ERROR: Received invalid OrderID:", orderID);
+        return res.status(400).json({ message: 'Invalid Order ID received' });
+    }
+
+    console.log(`>>> Attempting to advance OrderID: ${orderID}`);
+
+    // 2. Fetch Current Status
     db.query('SELECT CurrentStage, Status FROM orders WHERE OrderID = ?', [orderID], (err, results) => {
-        if (err) {
-            console.error("DB Error on Fetch:", err);
-            return res.status(500).json({ message: 'Database error', error: err });
-        }
-        if (results.length === 0) return res.status(404).json({ message: 'Order not found' });
+        if (err) return res.status(500).json({ message: 'DB Fetch Error', error: err });
+        if (results.length === 0) return res.status(404).json({ message: 'Order not found in database' });
 
-        let nextStage = (results[0].CurrentStage || 1) + 1;
+        // Logic: Increment stage, and if it's the first time clicking "Start Packing", 
+        // move it from 'approved' (Stage 2) to 'processing' (Stage 3)
+        let nextStage = (results[0].CurrentStage || 2) + 1; 
         let newStatus = 'processing';
 
         if (nextStage >= 7) {
@@ -227,15 +233,15 @@ router.post('/:id/next-stage', (req, res) => {
             newStatus = 'delivered';
         }
 
-        // 2. Update
+        // 3. The Final Update
         const updateSql = 'UPDATE orders SET CurrentStage = ?, Status = ? WHERE OrderID = ?';
-        db.query(updateSql, [nextStage, newStatus, orderID], (updateErr) => {
+        db.query(updateSql, [nextStage, newStatus, orderID], (updateErr, result) => {
             if (updateErr) {
-                console.error("DB Error on Update:", updateErr);
+                console.error(">>> DB Update Failed:", updateErr);
                 return res.status(500).json({ message: 'Update failed', error: updateErr });
             }
-            
-            console.log(`>>> Successfully moved to Stage ${nextStage} and Status ${newStatus}`);
+
+            console.log(`>>> SUCCESS: Order ${orderID} is now Stage ${nextStage} (${newStatus})`);
             res.status(200).json({ 
                 message: 'Stage Advanced', 
                 newStage: nextStage, 
