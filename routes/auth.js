@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
+const crypto = require('crypto'); // Built-in Node tool to make tokens
 
 // POST /auth/login
 router.post('/login', (req, res) => {
@@ -31,7 +32,6 @@ router.post('/login', (req, res) => {
             const newAttempts = user.LoginAttempts + 1;
 
             if (newAttempts >= 3) {
-                // LOCK THE ACCOUNT
                 db.query(
                     'UPDATE users SET LoginAttempts = ?, IsLocked = 1 WHERE UserID = ?',
                     [newAttempts, user.UserID],
@@ -41,17 +41,14 @@ router.post('/login', (req, res) => {
                     }
                 );
             } else {
-                // INCREMENT ATTEMPTS
                 db.query(
                     'UPDATE users SET LoginAttempts = ? WHERE UserID = ?',
                     [newAttempts, user.UserID],
                     (err2) => {
                         if (err2) return res.status(500).json({ message: 'Database error' });
-                        
                         const msg = newAttempts === 1 
                             ? 'First incorrect attempt. Please try again.' 
                             : 'Second incorrect attempt. One attempt remaining before lock.';
-                        
                         return res.status(401).json({ message: msg });
                     }
                 );
@@ -59,22 +56,38 @@ router.post('/login', (req, res) => {
             return;
         }
 
-        // 4. SUCCESS -> Reset attempts
+        // 4. SUCCESS -> Reset attempts AND Create Session
         db.query(
             'UPDATE users SET LoginAttempts = 0 WHERE UserID = ?',
             [user.UserID],
             (err2) => {
                 if (err2) return res.status(500).json({ message: 'Database error' });
 
-                return res.status(200).json({
-                    message: 'Login successful',
-                    user: {
-                        id: user.UserID,
-                        name: user.Name,
-                        role: user.Role,
-                        shopName: user.ShopName
-                    }
+                // --- NEW SESSION CODE START ---
+                const sessionToken = crypto.randomBytes(32).toString('hex');
+                const expiresAt = new Date();
+                expiresAt.setHours(expiresAt.getHours() + 24); // Token valid for 24 hours
+
+                // Clear old sessions and insert new one
+                db.query('DELETE FROM sessions WHERE UserID = ?', [user.UserID], () => {
+                    const sessionQuery = 'INSERT INTO sessions (UserID, SessionToken, ExpiresAt, IsActive) VALUES (?, ?, ?, 1)';
+                    db.query(sessionQuery, [user.UserID, sessionToken, expiresAt], (sessErr) => {
+                        if (sessErr) return res.status(500).json({ message: 'Session creation failed' });
+
+                        // Final Response with Token
+                        return res.status(200).json({
+                            message: 'Login successful',
+                            sessionToken: sessionToken, // Send this to Flutter
+                            user: {
+                                id: user.UserID,
+                                name: user.Name,
+                                role: user.Role,
+                                shopName: user.ShopName
+                            }
+                        });
+                    });
                 });
+                // --- NEW SESSION CODE END ---
             }
         );
     });
