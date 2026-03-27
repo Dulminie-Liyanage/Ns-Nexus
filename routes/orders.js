@@ -141,9 +141,34 @@ router.put('/:id', (req, res) => {
 
                 Promise.all(queries)
                     .then(() => {
-                        db.commit((err3) => {
-                            if (err3) return db.rollback(() => res.status(500).json(err3));
-                            res.status(200).json({ message: 'Order partially approved and quantities updated' });
+                        // --- NEW: Recalculate Order Totals before committing ---
+                        const recalculateQuery = `
+                            UPDATE orders o
+                            SET 
+                                TotalPrice = (
+                                    SELECT COALESCE(SUM(oi.QtyApproved * oi.UnitPrice), 0) 
+                                    FROM order_items oi 
+                                    WHERE oi.OrderID = o.OrderID
+                                ),
+                                TotalWeight = (
+                                    SELECT COALESCE(SUM(oi.QtyApproved * p.Weight), 0) 
+                                    FROM order_items oi 
+                                    JOIN products p ON oi.ProductID = p.ProductID 
+                                    WHERE oi.OrderID = o.OrderID
+                                )
+                            WHERE o.OrderID = ?
+                        `;
+
+                        db.query(recalculateQuery, [orderID], (errRecalc) => {
+                            if (errRecalc) {
+                                return db.rollback(() => res.status(500).json({ message: 'Recalculation error', error: errRecalc }));
+                            }
+
+                            // Now that totals are correct, commit everything
+                            db.commit((err3) => {
+                                if (err3) return db.rollback(() => res.status(500).json(err3));
+                                res.status(200).json({ message: 'Order partially approved and totals updated!' });
+                            });
                         });
                     })
                     .catch(err4 => db.rollback(() => res.status(500).json(err4)));
@@ -178,6 +203,9 @@ router.put('/:id', (req, res) => {
         res.status(400).json({ message: 'Invalid status provided' });
     }
 });
+
+
+
 // GET /orders/:id/items - get items for a specific order
 router.get('/:id/items', (req, res) => {
     const orderID = req.params.id;
