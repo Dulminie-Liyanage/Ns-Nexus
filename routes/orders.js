@@ -206,40 +206,32 @@ router.get('/:id/items', (req, res) => {
     });
 });
 
-// POST /orders/:id/next-stage - Advance the order and update Status automatically
+// POST /orders/:id/next-stage
 router.post('/:id/next-stage', (req, res) => {
     const orderID = req.params.id;
     
-    // 1. First, see what stage the order is currently in
-    const getStageQuery = 'SELECT CurrentStage, Status FROM orders WHERE OrderID = ?';
-    
-    db.query(getStageQuery, [orderID], (err, results) => {
-        if (err || results.length === 0) return res.status(500).json({ message: 'Order not found' });
-        
-        const currentStage = results[0].CurrentStage;
-        let nextStage = currentStage + 1;
-        let newStatus = results[0].Status;
+    // 1. Get current state
+    db.query('SELECT CurrentStage, Status FROM orders WHERE OrderID = ?', [orderID], (err, results) => {
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+        if (results.length === 0) return res.status(404).json({ message: 'Order ID not found' });
 
-        // 2. Logic to sync Status with the Stage
-        if (nextStage === 2 || nextStage === 3) {
-            newStatus = 'processing'; // Moving from Approved to Packing/Processing
-        } else if (nextStage >= 7) {
-            nextStage = 7; // Cap it at 7
-            newStatus = 'delivered'; // Final stage
+        let nextStage = results[0].CurrentStage + 1;
+        let newStatus = 'processing';
+
+        // 2. Logic: If it reaches the end, it's Delivered
+        if (nextStage >= 7) {
+            nextStage = 7;
+            newStatus = 'delivered';
         }
 
-        const updateSql = `
-            UPDATE orders 
-            SET CurrentStage = ?, Status = ?
-            WHERE OrderID = ?
-        `;
-
+        // 3. Update both Stage AND Status
+        const updateSql = 'UPDATE orders SET CurrentStage = ?, Status = ? WHERE OrderID = ?';
         db.query(updateSql, [nextStage, newStatus, orderID], (updateErr) => {
-            if (updateErr) return res.status(500).json({ message: 'Failed to update order status', error: updateErr });
+            if (updateErr) return res.status(500).json({ message: 'Update failed', error: updateErr });
             
             res.status(200).json({ 
-                message: `Order ${orderID} moved to Stage ${nextStage}`,
-                newStage: nextStage,
+                message: 'Stage Advanced', 
+                newStage: nextStage, 
                 newStatus: newStatus 
             });
         });
