@@ -38,6 +38,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   }
 
   Future<void> _showItemsDialog(dynamic orderId) async {
+    // 1. Show Loading Indicator
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -47,91 +48,96 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     try {
       final items = await _orderService.fetchOrderItems(orderId);
       if (!mounted) return;
-      Navigator.pop(context); // close loader
+      Navigator.pop(context); // Close loading
 
       showDialog(
         context: context,
         builder: (ctx) {
-          // Get the status and reason from the first item (provided by our SQL JOIN)
-          final String status = items.isNotEmpty
-              ? (items[0]['Status'] ?? '').toString().toLowerCase()
-              : '';
-          final String reason = items.isNotEmpty
-              ? (items[0]['RejectionReason'] ?? 'No reason provided')
-              : 'No reason provided';
+          // --- DATA MAPPING ---
+          // We look at the first item to get the overall Order status and reason
+          final firstItem = items.isNotEmpty ? items[0] : {};
+
+          // CRITICAL: We use EXACT Case to match your Backend SQL results
+          final String status = (firstItem['Status'] ?? '')
+              .toString()
+              .toLowerCase();
+          final String reason =
+              (firstItem['RejectionReason'] ?? 'No reason provided').toString();
 
           return AlertDialog(
-            title: const Text('Order Items'),
+            title: const Text('Order Details'),
             content: SizedBox(
               width: double.maxFinite,
               child: Column(
-                mainAxisSize:
-                    MainAxisSize.min, // Important to prevent empty space
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 1. SCROLLABLE LIST OF ITEMS (YOUR ORIGINAL UI)
                   Flexible(
                     child: items.isEmpty
-                        ? const Text('No items inside this order.')
+                        ? const Text('No items found.')
                         : ListView.builder(
                             shrinkWrap: true,
                             itemCount: items.length,
                             itemBuilder: (context, i) {
                               final item = items[i];
-                              final name =
-                                  item['ProductName'] ??
-                                  item['productName'] ??
-                                  'Product';
-                              final qtyRaw =
-                                  item['QtyRequested'] ?? item['Quantity'] ?? 0;
-                              final approvedRaw = item['QtyApproved'] ?? qtyRaw;
-                              final priceRaw =
-                                  item['UnitPrice'] ?? item['Price'] ?? 0.0;
 
-                              final qReq = int.tryParse(qtyRaw.toString()) ?? 0;
-                              final qApprv =
-                                  int.tryParse(approvedRaw.toString()) ?? qReq;
-                              final p =
-                                  double.tryParse(priceRaw.toString()) ?? 0.0;
-                              final lineTotal = p * qApprv;
-                              final isModified =
-                                  qApprv < qReq && status != 'rejected';
+                              // Mapping backend fields
+                              final name = item['ProductName'] ?? 'Product';
+                              final qtyReq = item['QtyRequested'] ?? 0;
+                              final qtyApprv = item['QtyApproved'] ?? qtyReq;
+                              final price =
+                                  double.tryParse(
+                                    item['Price']?.toString() ?? '0',
+                                  ) ??
+                                  0.0;
+
+                              // 1. RE-ADDING THE ORANGE LOGIC:
+                              // Only highlight if items were reduced AND it's not a full rejection
+                              final bool isModified =
+                                  (qtyApprv < qtyReq) && (status != 'rejected');
 
                               return Container(
-                                color: isModified
-                                    ? Colors.orange.withOpacity(0.2)
-                                    : null,
+                                margin: const EdgeInsets.symmetric(vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: isModified
+                                      ? Colors.orange.withOpacity(0.15)
+                                      : null,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
                                 child: ListTile(
                                   title: Text(
                                     name,
                                     style: TextStyle(
-                                      color: isModified
-                                          ? Colors.deepOrange
-                                          : Colors.black,
                                       fontWeight: isModified
                                           ? FontWeight.bold
                                           : FontWeight.normal,
+                                      color: isModified
+                                          ? Colors.orange.shade900
+                                          : Colors.black,
                                     ),
                                   ),
                                   subtitle: Text(
-                                    'Requested: $qReq   |   Approved: $qApprv\nUnit Price: LKR ${p.toStringAsFixed(2)}  —  Line Total: LKR ${lineTotal.toStringAsFixed(2)}',
+                                    'Requested: $qtyReq | Approved: $qtyApprv',
                                   ),
-                                  isThreeLine: true,
+                                  trailing: Text(
+                                    'LKR ${(price * qtyApprv).toStringAsFixed(2)}',
+                                  ),
                                 ),
                               );
                             },
                           ),
                   ),
 
-                  // 2. THE RED BOX AT THE BOTTOM (ONLY IF REJECTED)
+                  // 2. THE REJECTION UI:
+                  // This shows the red box only if the order status is 'rejected'
                   if (status == 'rejected') ...[
-                    const Divider(height: 30, thickness: 1),
+                    const Divider(height: 30),
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: Colors.red.shade200),
+                        borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -139,8 +145,8 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                           const Text(
                             "REJECTION REASON",
                             style: TextStyle(
-                              fontWeight: FontWeight.bold,
                               color: Colors.red,
+                              fontWeight: FontWeight.bold,
                               fontSize: 12,
                             ),
                           ),
@@ -170,7 +176,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      Navigator.pop(context);
+      Navigator.pop(context); // Close loading
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error: $e')));
