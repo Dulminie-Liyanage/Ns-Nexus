@@ -52,22 +52,23 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
       showDialog(
         context: context,
         builder: (ctx) {
-          // We'll pull these from the first item once your backend is updated
+          // Get the status and reason from the first item (provided by our SQL JOIN)
           final String status = items.isNotEmpty
               ? (items[0]['Status'] ?? '').toString().toLowerCase()
               : '';
           final String reason = items.isNotEmpty
               ? (items[0]['RejectionReason'] ?? 'No reason provided')
-              : '';
+              : 'No reason provided';
 
           return AlertDialog(
             title: const Text('Order Items'),
             content: SizedBox(
               width: double.maxFinite,
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisSize:
+                    MainAxisSize.min, // Important to prevent empty space
                 children: [
-                  // 1. YOUR ORIGINAL LIST (KEEPING YOUR EXACT UI)
+                  // 1. SCROLLABLE LIST OF ITEMS (YOUR ORIGINAL UI)
                   Flexible(
                     child: items.isEmpty
                         ? const Text('No items inside this order.')
@@ -79,25 +80,12 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                               final name =
                                   item['ProductName'] ??
                                   item['productName'] ??
-                                  'Product ${item['ProductID'] ?? item['product_id'] ?? 'Unknown'}';
+                                  'Product';
                               final qtyRaw =
-                                  item['QtyRequested'] ??
-                                  item['qty_requested'] ??
-                                  item['Quantity'] ??
-                                  item['quantity'] ??
-                                  0;
-                              final approvedRaw =
-                                  item['QtyApproved'] ??
-                                  item['qty_approved'] ??
-                                  item['ApprovedQty'] ??
-                                  item['approved_qty'] ??
-                                  qtyRaw;
+                                  item['QtyRequested'] ?? item['Quantity'] ?? 0;
+                              final approvedRaw = item['QtyApproved'] ?? qtyRaw;
                               final priceRaw =
-                                  item['UnitPrice'] ??
-                                  item['unit_price'] ??
-                                  item['Price'] ??
-                                  item['price'] ??
-                                  0.0;
+                                  item['UnitPrice'] ?? item['Price'] ?? 0.0;
 
                               final qReq = int.tryParse(qtyRaw.toString()) ?? 0;
                               final qApprv =
@@ -105,9 +93,9 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                               final p =
                                   double.tryParse(priceRaw.toString()) ?? 0.0;
                               final lineTotal = p * qApprv;
-                              final isModified = qApprv < qReq;
+                              final isModified =
+                                  qApprv < qReq && status != 'rejected';
 
-                              // RESTORING YOUR ORIGINAL CONTAINER STYLING
                               return Container(
                                 color: isModified
                                     ? Colors.orange.withOpacity(0.2)
@@ -134,9 +122,9 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                           ),
                   ),
 
-                  // 2. THE REJECTION SECTION (ONLY ADDED AT THE BOTTOM)
+                  // 2. THE RED BOX AT THE BOTTOM (ONLY IF REJECTED)
                   if (status == 'rejected') ...[
-                    const Divider(height: 30),
+                    const Divider(height: 30, thickness: 1),
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
