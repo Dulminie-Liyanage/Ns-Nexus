@@ -191,13 +191,16 @@ router.put('/:id', (req, res) => {
 });
 
 // GET /orders/:id/items - get items for a specific order
+// --- NEW REPLACEMENT CODE ---
 router.get('/:id/items', (req, res) => {
     const orderID = req.params.id;
     const query = `
         SELECT oi.ItemID, oi.QtyRequested, oi.QtyApproved,
-               p.ProductName, p.Unit, p.Price
+               p.ProductName, p.Unit, p.Price,
+               o.Status, o.RejectionReason 
         FROM order_items oi
         JOIN products p ON oi.ProductID = p.ProductID
+        JOIN orders o ON oi.OrderID = o.OrderID
         WHERE oi.OrderID = ?
     `;
     db.query(query, [orderID], (err, results) => {

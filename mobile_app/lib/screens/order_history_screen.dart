@@ -38,74 +38,175 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   }
 
   Future<void> _showItemsDialog(dynamic orderId) async {
-     showDialog(
-       context: context,
-       barrierDismissible: false,
-       builder: (ctx) => const Center(child: CircularProgressIndicator()),
-     );
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
 
-     try {
-       final items = await _orderService.fetchOrderItems(orderId);
-       if (!mounted) return;
-       Navigator.pop(context); // close loader
+    try {
+      final items = await _orderService.fetchOrderItems(orderId);
+      if (!mounted) return;
+      Navigator.pop(context); // close loader
 
-       showDialog(
-         context: context,
-         builder: (ctx) => AlertDialog(
-           title: const Text('Order Items'),
-           content: SizedBox(
-             width: double.maxFinite,
-             child: items.isEmpty 
-               ? const Text('No items inside this order.') 
-               : ListView.builder(
-                   shrinkWrap: true,
-                   itemCount: items.length,
-                   itemBuilder: (context, i) {
-                      final item = items[i];
-                      final name = item['ProductName'] ?? item['productName'] ?? 'Product ${item['ProductID'] ?? item['product_id'] ?? 'Unknown'}';
-                      final qtyRaw = item['QtyRequested'] ?? item['qty_requested'] ?? item['Quantity'] ?? item['quantity'] ?? 0;
-                      final approvedRaw = item['QtyApproved'] ?? item['qty_approved'] ?? item['ApprovedQty'] ?? item['approved_qty'] ?? qtyRaw;
-                      final priceRaw = item['UnitPrice'] ?? item['unit_price'] ?? item['Price'] ?? item['price'] ?? 0.0;
-                      
-                      final qReq = int.tryParse(qtyRaw.toString()) ?? 0;
-                      final qApprv = int.tryParse(approvedRaw.toString()) ?? qReq;
-                      final p = double.tryParse(priceRaw.toString()) ?? 0.0;
-                      final lineTotal = p * qApprv;
-                      final isModified = qApprv < qReq;
+      showDialog(
+        context: context,
+        builder: (ctx) {
+          // We'll pull these from the first item once your backend is updated
+          final String status = items.isNotEmpty
+              ? (items[0]['Status'] ?? '').toString().toLowerCase()
+              : '';
+          final String reason = items.isNotEmpty
+              ? (items[0]['RejectionReason'] ?? 'No reason provided')
+              : '';
 
-                      return Container(
-                        color: isModified ? Colors.orange.withOpacity(0.2) : null,
-                        child: ListTile(
-                          title: Text(name, style: TextStyle(color: isModified ? Colors.deepOrange : Colors.black, fontWeight: isModified ? FontWeight.bold : FontWeight.normal)),
-                          subtitle: Text('Requested: $qReq   |   Approved: $qApprv\nUnit Price: LKR ${p.toStringAsFixed(2)}  —  Line Total: LKR ${lineTotal.toStringAsFixed(2)}'),
-                          isThreeLine: true,
-                        ),
-                      );
-                   }
-                 ),
-           ),
-           actions: [
-             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-           ]
-         )
-       );
-     } catch (e) {
-       if (!mounted) return;
-       Navigator.pop(context); // close loader
-       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-     }
+          return AlertDialog(
+            title: const Text('Order Items'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 1. YOUR ORIGINAL LIST (KEEPING YOUR EXACT UI)
+                  Flexible(
+                    child: items.isEmpty
+                        ? const Text('No items inside this order.')
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: items.length,
+                            itemBuilder: (context, i) {
+                              final item = items[i];
+                              final name =
+                                  item['ProductName'] ??
+                                  item['productName'] ??
+                                  'Product ${item['ProductID'] ?? item['product_id'] ?? 'Unknown'}';
+                              final qtyRaw =
+                                  item['QtyRequested'] ??
+                                  item['qty_requested'] ??
+                                  item['Quantity'] ??
+                                  item['quantity'] ??
+                                  0;
+                              final approvedRaw =
+                                  item['QtyApproved'] ??
+                                  item['qty_approved'] ??
+                                  item['ApprovedQty'] ??
+                                  item['approved_qty'] ??
+                                  qtyRaw;
+                              final priceRaw =
+                                  item['UnitPrice'] ??
+                                  item['unit_price'] ??
+                                  item['Price'] ??
+                                  item['price'] ??
+                                  0.0;
+
+                              final qReq = int.tryParse(qtyRaw.toString()) ?? 0;
+                              final qApprv =
+                                  int.tryParse(approvedRaw.toString()) ?? qReq;
+                              final p =
+                                  double.tryParse(priceRaw.toString()) ?? 0.0;
+                              final lineTotal = p * qApprv;
+                              final isModified = qApprv < qReq;
+
+                              // RESTORING YOUR ORIGINAL CONTAINER STYLING
+                              return Container(
+                                color: isModified
+                                    ? Colors.orange.withOpacity(0.2)
+                                    : null,
+                                child: ListTile(
+                                  title: Text(
+                                    name,
+                                    style: TextStyle(
+                                      color: isModified
+                                          ? Colors.deepOrange
+                                          : Colors.black,
+                                      fontWeight: isModified
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    'Requested: $qReq   |   Approved: $qApprv\nUnit Price: LKR ${p.toStringAsFixed(2)}  —  Line Total: LKR ${lineTotal.toStringAsFixed(2)}',
+                                  ),
+                                  isThreeLine: true,
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+
+                  // 2. THE REJECTION SECTION (ONLY ADDED AT THE BOTTOM)
+                  if (status == 'rejected') ...[
+                    const Divider(height: 30),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "REJECTION REASON",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            reason,
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
   }
 
   String _getStageName(int stage) {
     switch (stage) {
-      case 1: return 'Pending';
-      case 2: return 'Approved';
-      case 3: return 'Packing';
-      case 4: return 'Shipped';
-      case 5: return 'At Hub';
-      case 6: return 'Out for Delivery';
-      case 7: return 'Delivered';
-      default: return 'Pending';
+      case 1:
+        return 'Pending';
+      case 2:
+        return 'Approved';
+      case 3:
+        return 'Packing';
+      case 4:
+        return 'Shipped';
+      case 5:
+        return 'At Hub';
+      case 6:
+        return 'Out for Delivery';
+      case 7:
+        return 'Delivered';
+      default:
+        return 'Pending';
     }
   }
 
@@ -132,7 +233,11 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
         const SizedBox(height: 8),
         Text(
           'Stage $currentStage of 7: ${_getStageName(currentStage)}',
-          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 13),
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.blueGrey,
+            fontSize: 13,
+          ),
         ),
       ],
     );
@@ -148,8 +253,17 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
   Widget _buildBody() {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text(_error!, style: const TextStyle(color: Colors.red)));
-    if (_orders.isEmpty) return const Center(child: Text('No order history found', style: TextStyle(color: Colors.grey, fontSize: 18)));
+    if (_error != null)
+      return Center(
+        child: Text(_error!, style: const TextStyle(color: Colors.red)),
+      );
+    if (_orders.isEmpty)
+      return const Center(
+        child: Text(
+          'No order history found',
+          style: TextStyle(color: Colors.grey, fontSize: 18),
+        ),
+      );
 
     return RefreshIndicator(
       onRefresh: _loadHistory,
@@ -166,26 +280,54 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                   Text('Order ID: #$orderId', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black87)),
+                  Text(
+                    'Order ID: #$orderId',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      color: Colors.black87,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Status: ${order['Status'] ?? 'Pending'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      Text('LKR ${order['TotalPrice']?.toString() ?? '0.00'}', style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text(
+                        'Status: ${order['Status'] ?? 'Pending'}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        'LKR ${order['TotalPrice']?.toString() ?? '0.00'}',
+                        style: const TextStyle(
+                          color: Colors.blue,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Text('Order Date: ${(order['CreatedAt'] ?? order['OrderDate'] ?? order['orderDate'] ?? 'N/A').toString().split('T')[0]}'),
-                  Text('Delivery Date: ${(order['DeliveryDate'] ?? order['deliveryDate'] ?? 'N/A').toString().split('T')[0]}'),
-                  Text('Total Weight: ${order['TotalWeight']?.toString() ?? '0.00'} kg'),
+                  Text(
+                    'Order Date: ${(order['CreatedAt'] ?? order['OrderDate'] ?? order['orderDate'] ?? 'N/A').toString().split('T')[0]}',
+                  ),
+                  Text(
+                    'Delivery Date: ${(order['DeliveryDate'] ?? order['deliveryDate'] ?? 'N/A').toString().split('T')[0]}',
+                  ),
+                  Text(
+                    'Total Weight: ${order['TotalWeight']?.toString() ?? '0.00'} kg',
+                  ),
                   const SizedBox(height: 16),
-                  _buildProgressBar(int.tryParse(order['CurrentStage']?.toString() ?? '1') ?? 1),
+                  _buildProgressBar(
+                    int.tryParse(order['CurrentStage']?.toString() ?? '1') ?? 1,
+                  ),
                   const SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton(
-                      onPressed: () => _showItemsDialog(orderId), 
+                      onPressed: () => _showItemsDialog(orderId),
                       child: const Text('View Items'),
                     ),
                   ),
