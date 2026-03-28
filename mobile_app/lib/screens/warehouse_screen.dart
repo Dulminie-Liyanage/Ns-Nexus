@@ -44,8 +44,14 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
 
   Future<void> _toggleStatus(int index, bool newValue) async {
     final product = _products[index];
-    final productId = product['ProductID'] ?? product['productId'] ?? product['id'] ?? product['Id'] ?? product['ProductId'] ?? product['_id'];
-    
+    final productId =
+        product['ProductID'] ??
+        product['productId'] ??
+        product['id'] ??
+        product['Id'] ??
+        product['ProductId'] ??
+        product['_id'];
+
     if (productId == null || productId.toString().trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Update failed: Invalid Product ID')),
@@ -54,7 +60,7 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
     }
 
     final newStatusInt = newValue ? 1 : 0;
-    
+
     setState(() {
       _products[index]['IsAvailable'] = newStatusInt;
     });
@@ -64,17 +70,17 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
       if (!mounted) return;
       await _loadProducts();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Status Updated')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Status Updated')));
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _products[index]['IsAvailable'] = newValue ? 0 : 1;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Update failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Update failed: $e')));
     }
   }
 
@@ -92,7 +98,9 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_currentIndex == 0 ? 'Product Management' : 'Order Management'),
+        title: Text(
+          _currentIndex == 0 ? 'Product Management' : 'Order Management',
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
@@ -108,7 +116,9 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
           ),
         ],
       ),
-      body: _currentIndex == 0 ? _buildInventoryTab() : const WarehouseOrdersScreen(),
+      body: _currentIndex == 0
+          ? _buildInventoryTab()
+          : const WarehouseOrdersScreen(),
       floatingActionButton: _currentIndex == 0
           ? FloatingActionButton(
               onPressed: () => _openProductForm(),
@@ -119,7 +129,10 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.inventory), label: 'Products'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.inventory),
+            label: 'Products',
+          ),
           BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'Orders'),
         ],
       ),
@@ -130,52 +143,77 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
     return _isLoading
         ? const Center(child: CircularProgressIndicator())
         : _errorMessage != null
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
-                ),
-              )
-            : RefreshIndicator(
-                onRefresh: _loadProducts,
-                child: ListView.builder(
-                  itemCount: _products.length,
-                  itemBuilder: (context, index) {
-                    final product = _products[index];
-                    final isAvailable = product['IsAvailable'] == 1 || product['IsAvailable'] == '1';
-                    final stockLevel = product['StockLevel'] ?? product['stockLevel'] ?? product['stock_level'];
-                    final stockInt = int.tryParse(stockLevel?.toString() ?? '') ?? -1;
-                    final backendLowStock = product['isLowStock'] == true || product['isLowStock'] == 1 || product['IsLowStock'] == true || product['IsLowStock'] == 1;
-                    final isLowStock = backendLowStock || (stockInt >= 0 && stockInt <= 10);
-                    final price = product['Price']?.toString() ?? '0.00';
-                    
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: ListTile(
-                        title: Text(product['ProductName']?.toString() ?? 'Unknown Product', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('SKU: ${product['SKU'] ?? 'N/A'} - Price: LKR ${price}'),
-                            if (stockLevel != null)
-                              Text(
-                                'Stock: $stockLevel',
-                                style: TextStyle(
-                                  fontWeight: isLowStock ? FontWeight.bold : FontWeight.normal,
-                                  color: isLowStock ? Colors.red : Colors.black87,
-                                ),
-                              ),
-                          ],
+        ? Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                _errorMessage!,
+                style: const TextStyle(color: Colors.red),
+              ),
+            ),
+          )
+        : RefreshIndicator(
+            onRefresh: _loadProducts,
+            child: ListView.builder(
+              itemCount: _products.length,
+              itemBuilder: (context, index) {
+                final product = _products[index];
+                final isAvailable =
+                    product['IsAvailable'] == 1 ||
+                    product['IsAvailable'] == '1';
+                final stockLevel =
+                    product['StockLevel'] ??
+                    product['stockLevel'] ??
+                    product['stock_level'];
+                final stockInt =
+                    int.tryParse(stockLevel?.toString() ?? '') ?? -1;
+                final backendLowStock =
+                    product['isLowStock'] == true ||
+                    product['isLowStock'] == 1 ||
+                    product['IsLowStock'] == true ||
+                    product['IsLowStock'] == 1;
+                final isLowStock =
+                    backendLowStock || (stockInt >= 0 && stockInt <= 10);
+                final price = product['Price']?.toString() ?? '0.00';
+
+                return Card(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: ListTile(
+                    title: Text(
+                      product['ProductName']?.toString() ?? 'Unknown Product',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'SKU: ${product['SKU'] ?? 'N/A'} - Price: LKR ${price}',
                         ),
-                        trailing: Switch(
-                          value: isAvailable,
-                          onChanged: (value) => _toggleStatus(index, value),
-                        ),
-                        onTap: () => _openProductForm(Map<String, dynamic>.from(product)),
-                      ),
-                    );
-                  },
-                ),
-              );
+                        if (stockLevel != null)
+                          Text(
+                            'Stock: $stockLevel',
+                            style: TextStyle(
+                              fontWeight: isLowStock
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: isLowStock ? Colors.red : Colors.black87,
+                            ),
+                          ),
+                      ],
+                    ),
+                    trailing: Switch(
+                      value: isAvailable,
+                      onChanged: (value) => _toggleStatus(index, value),
+                    ),
+                    onTap: () =>
+                        _openProductForm(Map<String, dynamic>.from(product)),
+                  ),
+                );
+              },
+            ),
+          );
   }
 }
