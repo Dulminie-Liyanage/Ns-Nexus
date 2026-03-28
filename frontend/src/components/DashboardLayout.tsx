@@ -7,6 +7,10 @@ import {
   LayoutDashboard, Users, ChevronRight
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle,
+  DialogFooter, DialogClose,
+} from "@/components/ui/dialog";
 
 interface NavItem {
   label: string;
@@ -80,14 +84,38 @@ export default function DashboardLayout({ children, role }: { children: ReactNod
               <p className="text-xs text-sidebar-foreground/50 truncate">{user?.email}</p>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
-            onClick={handleLogout}
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Log out
-          </Button>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                variant="ghost"
+                className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                //onClick={handleLogout}
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Log out
+              </Button>
+            </DialogTrigger>
+
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Confrim Logout</DialogTitle>
+              </DialogHeader>
+
+              <p className="text-sm text-muted-foreground">
+                Are you sure you want to log out?
+              </p>
+
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline">Cancel</Button>
+                </DialogClose>
+
+                <Button variant="destructive" text-sm text-muted-foreground>
+                  Logout
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </aside>
 
