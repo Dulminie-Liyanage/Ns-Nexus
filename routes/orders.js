@@ -192,6 +192,7 @@ router.put('/:id', (req, res) => {
 
 // GET /orders/:id/items - get items for a specific order
 // --- NEW REPLACEMENT CODE ---
+// GET /orders/:id/items - updated to include status and rejection reason
 router.get('/:id/items', (req, res) => {
     const orderID = req.params.id;
     const query = `
@@ -208,6 +209,7 @@ router.get('/:id/items', (req, res) => {
         res.status(200).json({ message: 'Order items fetched successfully', items: results });
     });
 });
+
 
 // POST /orders/:id/next-stage
 router.post('/:id/next-stage', (req, res) => {
