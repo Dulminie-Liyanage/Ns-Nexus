@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
+require('dotenv').config(); //logic happens here to load environment variables from .env file
 const db = require('../config/db');
 
 const authRoutes = require('../routes/auth');
