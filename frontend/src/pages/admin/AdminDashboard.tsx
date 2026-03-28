@@ -1,11 +1,19 @@
+import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { store } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ClipboardList, Package, CheckCircle, XCircle, Clock, ShoppingCart } from "lucide-react";
 
 export default function AdminDashboard() {
-  const orders = store.getOrders();
-  const products = store.getProducts();
+  const [orders, setOrders] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+
+  useEffect(() => {
+    // For Admin, get all orders by passing some 'all' flag or special retailerId
+    store.getOrders("ALL").then(setOrders).catch(console.error);
+    store.getAvailableProducts().then(setProducts).catch(console.error);
+  }, []);
+
   const pending = orders.filter((o) => o.status === "Pending").length;
   const approved = orders.filter((o) => o.status === "Approved").length;
   const rejected = orders.filter((o) => o.status === "Rejected").length;
@@ -41,7 +49,7 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {orders.filter(o => o.status === "Pending").length > 0 && (
+        {pending > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Pending Orders</CardTitle>

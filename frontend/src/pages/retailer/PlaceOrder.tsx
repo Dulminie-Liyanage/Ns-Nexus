@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/lib/auth-contex";
-import { store, OrderItem } from "@/lib/store";
+import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,14 +13,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import "react-day-picker/dist/style.css";
 
+const API_BASE = "http://localhost:5000"; // replace with your backend URL if deployed
+
 export default function PlaceOrder() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const products = store.getAvailableProducts();
-  const pastOrders = store.getOrders().filter(
-    (o) => o.retailerId === user!.id
-  ); 
-
+  const [products, setProducts] = useState<any[]>([]);
+  const [pastOrders, setPastOrders] = useState<any[]>([]);
   const [items, setItems] = useState<{ skuId: string; quantity: number }[]>([]);
   const [deliveryDate, setDeliveryDate] = useState<Date>();
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -28,6 +27,21 @@ export default function PlaceOrder() {
   const [success, setSuccess] = useState("");
   const [urgent, setUrgent] = useState(false);
   const [quickOrderOpen, setQuickOrderOpen] = useState(false);
+
+  const minDate = addHours(new Date(), 48);
+
+  // Fetch products from backend
+  useEffect(() => {
+    axios.get(`${API_BASE}/products`)
+      .then(res => setProducts(res.data.products))
+      .catch(err => console.error("Error fetching products:", err));
+
+    if (user) {
+      axios.get(`${API_BASE}/orders/retailer/${user.id}`)
+        .then(res => setPastOrders(res.data.orders))
+        .catch(err => console.error("Error fetching orders:", err));
+    }
+  }, [user]);
 
   const addItem = (productId: string, qty = 1) => {
     if (items.find((i) => i.skuId === productId)) return;
@@ -41,16 +55,15 @@ export default function PlaceOrder() {
 
   const removeItem = (skuId: string) => setItems(items.filter((i) => i.skuId !== skuId));
 
-  const orderItems: OrderItem[] = items.map((i) => {
-    const p = products.find((pr) => pr.id === i.skuId)!;
-    return { skuId: i.skuId, skuName: p.name, quantity: i.quantity, price: p.price, weight: p.weight };
+  const orderItems = items.map((i) => {
+    const p = products.find((pr) => pr.ProductID === i.skuId || pr.id === i.skuId);
+    return { skuId: i.skuId, skuName: p?.ProductName || p?.name, quantity: i.quantity, price: p?.Price || p?.price, weight: p?.Weight || p?.weight };
   });
 
   const totalPrice = orderItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
   const totalWeight = orderItems.reduce((sum, i) => sum + i.weight * i.quantity, 0);
-  const minDate = addHours(new Date(), 48);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setError("");
     if (items.length === 0) { setError("Add at least one item"); return; }
     if (!deliveryDate) { setError("Select a delivery date"); return; }
@@ -59,21 +72,25 @@ export default function PlaceOrder() {
       return;
     }
 
-    const order = store.createOrder({
-      retailerId: user!.id,
-      retailerName: user!.name,
-      items: orderItems,
-      deliveryDate: deliveryDate.toISOString(),
-      totalPrice,
-      totalWeight,
-      urgent, // mark urgent orders
-    });
+    try {
+      const payload = {
+        retailer_id: user!.id,
+        delivery_date: deliveryDate.toISOString(),
+        is_urgent: urgent,
+        items: orderItems.map(i => ({ product_id: i.skuId, qty_requested: i.quantity })),
+      };
 
-    setSuccess(`Order ${order.id} placed successfully!`);
-    setItems([]);
-    setDeliveryDate(undefined);
-    setUrgent(false);
-    setTimeout(() => navigate("/dashboard/history"), 2000);
+      const res = await axios.post(`${API_BASE}/orders`, payload);
+      setSuccess(`Order ${res.data.order_id} placed successfully!`);
+      setItems([]);
+      setDeliveryDate(undefined);
+      setUrgent(false);
+
+      setTimeout(() => navigate("/dashboard/history"), 2000);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.response?.data?.message || "Failed to place order");
+    }
   };
 
   if (success) {
@@ -93,6 +110,7 @@ export default function PlaceOrder() {
   return (
     <DashboardLayout role="retailer">
       <div className="space-y-6">
+        {/* Top Buttons */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Place Order</h1>
@@ -108,6 +126,7 @@ export default function PlaceOrder() {
           </div>
         </div>
 
+        {/* Quick Orders */}
         {quickOrderOpen && (
           <Card className="bg-blue-50">
             <CardHeader>
@@ -119,17 +138,17 @@ export default function PlaceOrder() {
               ) : (
                 pastOrders.map((o) => (
                   <Button
-                    key={o.id}
+                    key={o.OrderID || o.id}
                     variant="outline"
                     size="sm"
                     className="w-full justify-between"
                     onClick={() => {
-                      setItems(o.items.map((i) => ({ skuId: i.skuId, quantity: i.quantity })));
+                      setItems(o.items.map((i: any) => ({ skuId: i.ProductID || i.skuId, quantity: i.QtyRequested || i.quantity })));
                       setDeliveryDate(undefined);
                       setQuickOrderOpen(false);
                     }}
                   >
-                    Order #{o.id} - {o.items.length} items
+                    Order #{o.OrderID || o.id} - {o.items.length} items
                   </Button>
                 ))
               )}
@@ -155,10 +174,10 @@ export default function PlaceOrder() {
               <CardContent>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {products.map((p) => {
-                    const inCart = items.find((i) => i.skuId === p.id);
+                    const inCart = items.find((i) => i.skuId === (p.ProductID || p.id));
                     return (
                       <div
-                        key={p.id}
+                        key={p.ProductID || p.id}
                         className={cn(
                           "rounded-lg border p-4 transition-colors",
                           inCart ? "border-primary bg-accent" : "border-border hover:border-primary/40"
@@ -166,27 +185,27 @@ export default function PlaceOrder() {
                       >
                         <div className="flex justify-between items-start">
                           <div>
-                            <p className="font-medium text-sm">{p.name}</p>
-                            <p className="text-xs text-muted-foreground font-mono">{p.sku}</p>
+                            <p className="font-medium text-sm">{p.ProductName || p.name}</p>
+                            <p className="text-xs text-muted-foreground font-mono">{p.SKU}</p>
                           </div>
-                          <p className="font-bold text-sm">${p.price.toFixed(2)}</p>
+                          <p className="font-bold text-sm">${(p.Price || p.price).toFixed(2)}</p>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-1">{p.weight} kg</p>
+                        <p className="text-xs text-muted-foreground mt-1">{p.Weight || p.weight} kg</p>
                         {inCart ? (
                           <div className="flex items-center gap-2 mt-3">
                             <Input
                               type="number"
                               min={1}
                               value={inCart.quantity}
-                              onChange={(e) => updateQty(p.id, parseInt(e.target.value) || 1)}
+                              onChange={(e) => updateQty(p.ProductID || p.id, parseInt(e.target.value) || 1)}
                               className="w-20 h-8 text-xs"
                             />
-                            <Button variant="ghost" size="sm" onClick={() => removeItem(p.id)}>
+                            <Button variant="ghost" size="sm" onClick={() => removeItem(p.ProductID || p.id)}>
                               <Trash2 className="h-3 w-3" />
                             </Button>
                           </div>
                         ) : (
-                          <Button variant="outline" size="sm" className="mt-3 h-8 text-xs" onClick={() => addItem(p.id)}>
+                          <Button variant="outline" size="sm" className="mt-3 h-8 text-xs" onClick={() => addItem(p.ProductID || p.id)}>
                             <Plus className="h-3 w-3 mr-1" /> Add
                           </Button>
                         )}
@@ -239,14 +258,24 @@ export default function PlaceOrder() {
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
-                        className={cn("w-full justify-start text-left font-normal h-9 text-sm", !deliveryDate && "text-muted-foreground")}
+                        className={cn(
+                          "w-full justify-start text-left font-normal h-9 text-sm", 
+                          !deliveryDate && "text-muted-foreground"
+                        )}
                         onClick={() => setCalendarOpen(true)}
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                         {deliveryDate ? format(deliveryDate, "PPP") : "Pick a date"}
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 z-50" align="start">
+                    <PopoverContent 
+                      className="w-auto p-0 z-[9999] bg-background shadow-xl rounded-xl" 
+                      side="bottom"
+                      align="start"
+                      sideOffset={10}
+                      avoidCollisions={true}
+                      collisionPadding={12}
+                    >
                       <div className="p-3">
                         <DayPicker
                           mode="single"

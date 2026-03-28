@@ -251,4 +251,7 @@ router.post('/:id/next-stage', (req, res) => {
     });
 });
 
+const authMiddleware = require('../middleware/authMiddleware');
+router.post('/', authMiddleware, placeOrder);
+
 module.exports = router;

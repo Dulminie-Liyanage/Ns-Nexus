@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useAuth } from "@/lib/auth-contex";
 import { store } from "@/lib/store";
@@ -6,7 +7,14 @@ import { ShoppingCart, Clock, CheckCircle, XCircle } from "lucide-react";
 
 export default function RetailerDashboard() {
   const { user } = useAuth();
-  const orders = store.getOrdersByRetailer(user?.id || "");
+  const [orders, setOrders] = useState<any[]>([]);
+
+  // Fetch orders on mount
+  useEffect(() => {
+    if (!user) return;
+    store.getOrders(user.id).then(setOrders).catch(console.error);
+  }, [user]);
+
   const pending = orders.filter((o) => o.status === "Pending").length;
   const approved = orders.filter((o) => o.status === "Approved").length;
   const rejected = orders.filter((o) => o.status === "Rejected").length;

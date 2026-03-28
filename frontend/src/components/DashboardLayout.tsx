@@ -110,7 +110,10 @@ export default function DashboardLayout({ children, role }: { children: ReactNod
                   <Button variant="outline">Cancel</Button>
                 </DialogClose>
 
-                <Button variant="destructive" text-sm text-muted-foreground>
+                <Button 
+                  variant="destructive" 
+                  onClick={handleLogout} // <- add this
+                >
                   Logout
                 </Button>
               </DialogFooter>

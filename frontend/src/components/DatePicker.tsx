@@ -21,7 +21,7 @@ export default function DatePicker({ value, onChange }: Props) {
         value={value ? value.toDateString() : ""}
         onClick={() => setIsOpen(!isOpen)}
         placeholder="Select delivery date"
-        className="w-full border border-blue-200 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-[#0a3c75] cursor-pointer"
+        className="w-full border border-blue-200 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
       />
 
       {/* Calendar Popup */}

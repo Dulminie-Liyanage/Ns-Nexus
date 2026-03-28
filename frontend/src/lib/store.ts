@@ -1,4 +1,7 @@
-// Simple in-memory store for demo (will be replaced with Lovable Cloud DB)
+// lib/store.ts
+import axios from "axios";
+
+const API_BASE = "http://localhost:5000"; // or your deployed backend URL
 
 export interface Product {
   id: string;
@@ -16,22 +19,13 @@ export interface OrderItem {
   price: number;
   weight: number;
 }
-export type OrderStatus =
-  "Pending"           // Waiting for Approval
-  "Approved"          // Approved
-  "Packing"
-  "Transit"           
-  "3PL"    // In 3PL Transit
-  "Out"  // Out for delivery
-  "Delivered"
-  "Rejected";        
 
 export interface Order {
   id: string;
   retailerId: string;
   retailerName: string;
   items: OrderItem[];
-  status: "Pending" | "Approved" | "Rejected";
+  status: string;
   deliveryDate: string;
   totalPrice: number;
   totalWeight: number;
@@ -40,45 +34,52 @@ export interface Order {
   urgent?: boolean;
 }
 
-let products: Product[] = [
-  { id: "p1", name: "Widget A", sku: "SKU-001", price: 25.99, weight: 0.5, available: true },
-  { id: "p2", name: "Widget B", sku: "SKU-002", price: 42.50, weight: 1.2, available: true },
-  { id: "p3", name: "Gadget C", sku: "SKU-003", price: 89.00, weight: 2.0, available: true },
-  { id: "p4", name: "Component D", sku: "SKU-004", price: 15.75, weight: 0.3, available: false },
-  { id: "p5", name: "Assembly E", sku: "SKU-005", price: 120.00, weight: 5.0, available: true },
-];
-
-let orders: Order[] = [];
-let orderCounter = 1000;
-
 export const store = {
-  getProducts: () => [...products],
-  getAvailableProducts: () => products.filter((p) => p.available),
-  addProduct: (p: Omit<Product, "id">) => {
-    const newP = { ...p, id: `p${Date.now()}` };
-    products = [...products, newP];
-    return newP;
-  },
-  toggleAvailability: (id: string) => {
-    products = products.map((p) => (p.id === id ? { ...p, available: !p.available } : p));
+  // Products
+  getAvailableProducts: async (): Promise<Product[]> => {
+    const res = await axios.get(`${API_BASE}/products`);
+    return res.data.products.map((p: any) => ({
+      id: p.ProductID.toString(),
+      name: p.ProductName,
+      sku: p.SKU,
+      price: p.Price,
+      weight: p.Weight,
+      available: p.IsAvailable === 1,
+    }));
   },
 
-  getOrders: () => [...orders],
-  getOrdersByRetailer: (retailerId: string) => orders.filter((o) => o.retailerId === retailerId),
-  createOrder: (order: Omit<Order, "id" | "status" | "createdAt">) => {
-    orderCounter++;
-    const newOrder: Order = {
-      ...order,
-      id: `ORD-${orderCounter}`,
-      status: "Pending",
-      createdAt: new Date().toISOString(),
-    };
-    orders = [...orders, newOrder];
-    return newOrder;
+  // Orders
+  getOrders: async (retailerId: string): Promise<Order[]> => {
+    const res = await axios.get(`${API_BASE}/orders/retailer/${retailerId}`);
+    return res.data.orders.map((o: any) => ({
+      id: o.OrderID.toString(),
+      retailerId: retailerId,
+      retailerName: o.RetailerName || "",
+      items: [], // frontend can fetch items separately if needed
+      status: o.Status,
+      deliveryDate: o.DeliveryDate,
+      totalPrice: o.TotalPrice,
+      totalWeight: o.TotalWeight,
+      createdAt: o.CreatedAt,
+      rejectionReason: o.RejectionReason,
+      urgent: o.IsUrgent === 1,
+    }));
   },
-  updateOrderStatus: (orderId: string, status: Order["status"], reason?: string) => {
-    orders = orders.map((o) =>
-      o.id === orderId ? { ...o, status, rejectionReason: reason } : o
-    );
+
+  createOrder: async (order: any) => {
+    const res = await axios.post(`${API_BASE}/orders`, order);
+    return res.data;
+  },
+
+  // Optional: fetch order items separately
+  getOrderItems: async (orderId: string) => {
+    const res = await axios.get(`${API_BASE}/orders/${orderId}/items`);
+    return res.data.items.map((i: any) => ({
+      skuId: i.ProductID.toString(),
+      skuName: i.ProductName,
+      quantity: i.QtyRequested,
+      price: i.Price,
+      weight: 0, // fetch from product if needed
+    }));
   },
 };

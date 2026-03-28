@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { store } from "@/lib/store";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
-import { Eye, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Eye, Clock, CheckCircle, XCircle } from "lucide-react";
 import type { Order } from "@/lib/store";
 
 function StatusIcon({ status }: { status: string }) {
@@ -17,100 +17,67 @@ function StatusIcon({ status }: { status: string }) {
   }
 }
 
-function OrderActions({ order, onUpdate }: { order: Order; onUpdate: () => void }) {
-  const [rejectOpen, setRejectOpen] = useState(false);
-  const [reason, setReason] = useState("");
-  const [detailOpen, setDetailOpen] = useState(false);
-
-  const handleApprove = () => {
-    store.updateOrderStatus(order.id, "Approved");
-    onUpdate();
-  };
-
-  const handleReject = () => {
-    if (!reason.trim()) return;
-    store.updateOrderStatus(order.id, "Rejected", reason);
-    setRejectOpen(false);
-    setReason("");
-    onUpdate();
-  };
+function OrderDetails({ order }: { order: Order }) {
+  const [open, setOpen] = useState(false);
 
   return (
-    <div className="flex items-center gap-1">
-      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogTrigger asChild>
-          <Button variant="ghost" size="sm"><Eye className="h-4 w-4" /></Button>
-        </DialogTrigger>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Order {order.id}</DialogTitle></DialogHeader>
-          <div className="space-y-3 text-sm">
-            <div className="grid grid-cols-2 gap-2">
-              <div><span className="text-muted-foreground">Retailer:</span> {order.retailerName}</div>
-              <div><span className="text-muted-foreground">Status:</span> {order.status}</div>
-              <div><span className="text-muted-foreground">Date:</span> {new Date(order.createdAt).toLocaleDateString()}</div>
-              <div><span className="text-muted-foreground">Delivery:</span> {new Date(order.deliveryDate).toLocaleDateString()}</div>
-              <div><span className="text-muted-foreground">Weight:</span> {order.totalWeight.toFixed(2)} kg</div>
-              <div><span className="text-muted-foreground">Total:</span> ${order.totalPrice.toFixed(2)}</div>
-            </div>
-            {order.rejectionReason && (
-              <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3">
-                <p className="font-medium text-destructive text-xs">Rejection Reason:</p>
-                <p className="text-destructive/80">{order.rejectionReason}</p>
-              </div>
-            )}
-            <div>
-              <h4 className="font-medium mb-1">Items</h4>
-              {order.items.map((item, i) => (
-                <div key={i} className="flex justify-between py-1 border-b border-border/50 last:border-0">
-                  <span>{item.skuName} × {item.quantity}</span>
-                  <span className="font-medium">${(item.price * item.quantity).toFixed(2)}</span>
-                </div>
-              ))}
-            </div>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm"><Eye className="h-4 w-4" /></Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Order {order.id}</DialogTitle></DialogHeader>
+        <div className="space-y-3 text-sm">
+          <div className="grid grid-cols-2 gap-2">
+            <div><span className="text-muted-foreground">Retailer:</span> {order.retailerName}</div>
+            <div><span className="text-muted-foreground">Status:</span> {order.status}</div>
+            <div><span className="text-muted-foreground">Date:</span> {new Date(order.createdAt).toLocaleDateString()}</div>
+            <div><span className="text-muted-foreground">Delivery:</span> {new Date(order.deliveryDate).toLocaleDateString()}</div>
+            <div><span className="text-muted-foreground">Weight:</span> {order.totalWeight.toFixed(2)} kg</div>
+            <div><span className="text-muted-foreground">Total:</span> ${order.totalPrice.toFixed(2)}</div>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      {order.status === "Pending" && (
-        <>
-          <Button variant="ghost" size="sm" onClick={handleApprove} className="text-success hover:text-success">
-            <CheckCircle className="h-4 w-4" />
-          </Button>
-          <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
-            <DialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
-                <XCircle className="h-4 w-4" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Reject Order {order.id}</DialogTitle></DialogHeader>
-              <div className="space-y-3">
-                <label className="text-sm font-medium">Rejection Reason (required)</label>
-                <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Enter reason for rejection..." />
+          {order.rejectionReason && (
+            <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3">
+              <p className="font-medium text-destructive text-xs">Rejection Reason:</p>
+              <p className="text-destructive/80">{order.rejectionReason}</p>
+            </div>
+          )}
+          <div>
+            <h4 className="font-medium mb-1">Items</h4>
+            {order.items.map((item, i) => (
+              <div key={i} className="flex justify-between py-1 border-b border-border/50 last:border-0">
+                <span>{item.skuName} × {item.quantity}</span>
+                <span className="font-medium">${(item.price * item.quantity).toFixed(2)}</span>
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setRejectOpen(false)}>Cancel</Button>
-                <Button variant="destructive" onClick={handleReject} disabled={!reason.trim()}>Reject Order</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </>
-      )}
-    </div>
+            ))}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 export default function AdminOrders() {
-  const [, setRefresh] = useState(0);
-  const orders = store.getOrders().slice().reverse();
-  const triggerRefresh = () => setRefresh((r) => r + 1);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchOrders() {
+      const allOrders = await store.getOrders(""); // pass empty string for all retailers
+      setOrders(allOrders.slice().reverse());
+      setLoading(false);
+    }
+    fetchOrders();
+  }, []);
+
+  if (loading) return <DashboardLayout role="admin"><p className="p-6">Loading orders...</p></DashboardLayout>;
 
   return (
     <DashboardLayout role="admin">
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Manage Orders</h1>
-          <p className="text-muted-foreground text-sm mt-1">Review, approve, or reject retailer orders</p>
+          <p className="text-muted-foreground text-sm mt-1">View all retailer orders</p>
         </div>
 
         <Card>
@@ -145,7 +112,7 @@ export default function AdminOrders() {
                         </span>
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <OrderActions order={o} onUpdate={triggerRefresh} />
+                        <OrderDetails order={o} />
                       </td>
                     </tr>
                   ))}
