@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../config/db');
+const db = require('../../config/db');
 const crypto = require('crypto'); // Built-in Node tool to make tokens
 
 // POST /auth/login

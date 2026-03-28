@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../config/db');
+const db = require('../../config/db');
 
 // 1. FOR RETAILERS: Only see items that are ACTIVE AND HAVE STOCK
 router.get('/', (req, res) => {
