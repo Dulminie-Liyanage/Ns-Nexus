@@ -36,7 +36,14 @@ class InventoryService {
       body: jsonEncode(productData),
     );
     if (response.statusCode != 200 && response.statusCode != 201) {
-      throw Exception('Failed to create product. Status: ${response.statusCode}');
+      String msg = 'Status ${response.statusCode}';
+      try {
+        final decoded = jsonDecode(response.body);
+        msg = decoded['message'] ?? decoded['error'] ?? response.body;
+      } catch (_) {
+        msg = response.body.isNotEmpty ? response.body : msg;
+      }
+      throw Exception('Failed to create product: $msg');
     }
   }
 
@@ -50,7 +57,14 @@ class InventoryService {
       body: jsonEncode(productData),
     );
     if (response.statusCode != 200) {
-      throw Exception('Failed to update product. Status: ${response.statusCode}');
+      String msg = 'Status ${response.statusCode}';
+      try {
+        final decoded = jsonDecode(response.body);
+        msg = decoded['message'] ?? decoded['error'] ?? response.body;
+      } catch (_) {
+        msg = response.body.isNotEmpty ? response.body : msg;
+      }
+      throw Exception('Failed to update product: $msg');
     }
   }
 }

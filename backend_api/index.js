@@ -1,11 +1,11 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config(); //logic happens here to load environment variables from .env file
-const db = require('../config/db');
+const db = require('./config/db');
 
-const authRoutes = require('../routes/auth');
-const productRoutes = require('../routes/products');
-const orderRoutes = require('../routes/orders');
+const authRoutes = require('./routes/auth');
+const productRoutes = require('./routes/products');
+const orderRoutes = require('./routes/orders');
 
 const app = express();
 
