@@ -4,30 +4,53 @@ import { useAuth } from "@/lib/auth-contex";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, Warehouse, Lock } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { AlertCircle } from "lucide-react";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+
+  const { login } = useAuth(); // optional if you still use context
   const navigate = useNavigate();
-  
+
+  // ✅ FIX: proper submit handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
-    const result = await login(email, password);
-    setLoading(false);
+    try {
+      const res = await fetch("http://15.235.160.20:25568/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (result.success) {
-      const stored = JSON.parse(localStorage.getItem("wms_user") || "{}");
-      navigate(stored.role === "admin" ? "/admin" : "/dashboard");
-    } else {
-      setError(result.error || "Login failed");
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Login failed");
+        return;
+      }
+
+      // ✅ save user
+      localStorage.setItem("wms_user", JSON.stringify(data));
+
+      // ✅ redirect based on role
+      if (data.role === "admin") {
+        navigate("/dashboard/admin");
+      } else {
+        navigate("/dashboard/retailer");
+      }
+
+    } catch (err) {
+      console.error(err);
+      setError("Server error");
+    } finally {
+      setLoading(false);
     }
   };
 

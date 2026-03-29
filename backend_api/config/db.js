@@ -1,37 +1,13 @@
-const mysql = require('mysql2');
-require('dotenv').config();
+const mysql = require('mysql2/promise');
 
-const db = mysql.createConnection({
-<<<<<<< HEAD:backend/config/db.js
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-});
-
-db.connect((err) => {
-  if (err) {
-    console.error('Database connection failed:', err);
-    return;
-  }
-  console.log('Connected to MySQL database');
+const db = mysql.createPool({
+    host: process.env.DB_HOST || '78.46.49.101',
+    user: process.env.DB_USER || 'u1066_F8vYx85FBK',
+    password: process.env.DB_PASSWORD || '2UtdK8iO.1V2!YZg50@L6OaT',
+    database: process.env.DB_NAME || 's1066_nexus',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
 });
 
 module.exports = db;
-=======
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME
-});
-
-db.connect((err) => {
-    if (err) {
-        console.log('Database connection failed:', err);
-        return;
-    }
-    console.log('Connected to MySQL database');
-});
-
-module.exports = db;
->>>>>>> 4aedc50452cbeb6ed4ce55062641af6449bef166:backend_api/config/db.js

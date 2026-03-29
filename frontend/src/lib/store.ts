@@ -47,6 +47,33 @@ export const store = {
       available: p.IsAvailable === 1,
     }));
   },
+  
+  // Fetch all products from backend
+  getProducts: async (): Promise<Product[]> => {
+    const res = await fetch("/api/products");
+    if (!res.ok) throw new Error("Failed to fetch products");
+    return res.json();
+  },
+
+    // Add new product
+  addProduct: async (prod: Omit<Product, "id">) => {
+    const res = await fetch("/api/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(prod),
+    });
+    if (!res.ok) throw new Error("Failed to create product");
+    return res.json();
+  },
+
+    // Toggle availability
+  toggleAvailability: async (id: string) => {
+    const res = await fetch(`/api/products/${id}/toggle`, {
+      method: "PATCH",
+    });
+    if (!res.ok) throw new Error("Failed to toggle availability");
+    return res.json();
+  },
 
   // Orders
   getOrders: async (retailerId: string): Promise<Order[]> => {
@@ -66,13 +93,19 @@ export const store = {
     }));
   },
 
+  // Create order
   createOrder: async (order: any) => {
-    const res = await axios.post(`${API_BASE}/orders`, order);
-    return res.data;
+    const res = await fetch("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(order),
+    });
+    if (!res.ok) throw new Error("Failed to create order");
+    return res.json();
   },
 
   // Optional: fetch order items separately
-  getOrderItems: async (orderId: string) => {
+  getOrderItems: async (orderId: string): Promise<OrderItem[]> => {
     const res = await axios.get(`${API_BASE}/orders/${orderId}/items`);
     return res.data.items.map((i: any) => ({
       skuId: i.ProductID.toString(),
@@ -82,4 +115,5 @@ export const store = {
       weight: 0, // fetch from product if needed
     }));
   },
+
 };

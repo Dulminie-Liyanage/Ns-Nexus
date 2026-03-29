@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
-import { store } from "@/lib/store";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { store, Product } from "@/lib/store";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,42 +10,57 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Plus, Package } from "lucide-react";
 
 export default function Inventory() {
-  const [, setRefresh] = useState(0);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
+
   const [addOpen, setAddOpen] = useState(false);
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
   const [price, setPrice] = useState("");
   const [weight, setWeight] = useState("");
 
-  const products = store.getProducts();
+  // Fetch products
+  useEffect(() => {
+    async function fetchProducts() {
+      const prods = await store.getProducts();
+      setProducts(prods);
+    }
+    fetchProducts();
+  }, [refreshKey]);
 
-  const handleAdd = () => {
+  // Add new product
+  const handleAdd = async () => {
     if (!name || !sku || !price || !weight) return;
-    store.addProduct({
+
+    await store.addProduct({
       name,
       sku,
       price: parseFloat(price),
       weight: parseFloat(weight),
       available: true,
     });
+
     setName(""); setSku(""); setPrice(""); setWeight("");
     setAddOpen(false);
-    setRefresh((r) => r + 1);
+    setRefreshKey((r) => r + 1);
   };
 
-  const toggleAvail = (id: string) => {
-    store.toggleAvailability(id);
-    setRefresh((r) => r + 1);
+  // Toggle availability
+  const toggleAvail = async (id: string) => {
+    await store.toggleAvailability(id);
+    setRefreshKey((r) => r + 1);
   };
 
   return (
     <DashboardLayout role="admin">
       <div className="space-y-6">
+        {/* HEADER + ADD */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Inventory Management</h1>
             <p className="text-muted-foreground text-sm mt-1">Manage SKUs and product availability</p>
           </div>
+
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>
               <Button><Plus className="h-4 w-4 mr-2" /> Add SKU</Button>
@@ -80,6 +95,7 @@ export default function Inventory() {
           </Dialog>
         </div>
 
+        {/* PRODUCTS TABLE */}
         <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
@@ -113,6 +129,9 @@ export default function Inventory() {
                       </td>
                     </tr>
                   ))}
+                  {products.length === 0 && (
+                    <tr><td colSpan={5} className="py-12 text-center text-muted-foreground">No products yet</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
