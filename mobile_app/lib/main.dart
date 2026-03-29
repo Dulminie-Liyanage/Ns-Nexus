@@ -1,12 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
-import 'screens/new_order_screen.dart';
-import 'screens/order_history_screen.dart';
-import 'screens/order_review_screen.dart';
-import 'screens/order_screen.dart';
-import 'screens/product_form_screen.dart';
 import 'screens/retailer_screen.dart';
-import 'screens/warehouse_orders_screen.dart';
 import 'screens/warehouse_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

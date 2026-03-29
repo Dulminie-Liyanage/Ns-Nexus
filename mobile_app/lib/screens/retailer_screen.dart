@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
-import 'new_order_screen.dart';
+import 'order_screen.dart';
 import 'order_history_screen.dart';
 
 class RetailerScreen extends StatelessWidget {
@@ -116,7 +116,7 @@ class RetailerScreen extends StatelessWidget {
               subtitle: 'Place a regular order with 48-hour delivery window',
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (ctx) => const NewOrderScreen()),
+                MaterialPageRoute(builder: (ctx) => const OrderScreen()),
               ),
             ),
             const SizedBox(height: 16),

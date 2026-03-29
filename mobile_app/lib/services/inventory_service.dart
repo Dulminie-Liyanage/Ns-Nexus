@@ -39,7 +39,11 @@ class InventoryService {
       String msg = 'Status ${response.statusCode}';
       try {
         final decoded = jsonDecode(response.body);
-        msg = decoded['message'] ?? decoded['error'] ?? response.body;
+        if (decoded['message'] != null && decoded['error'] != null) {
+          msg = "${decoded['message']}: ${decoded['error']}";
+        } else {
+          msg = decoded['message'] ?? decoded['error'] ?? response.body;
+        }
       } catch (_) {
         msg = response.body.isNotEmpty ? response.body : msg;
       }
@@ -47,7 +51,10 @@ class InventoryService {
     }
   }
 
-  Future<void> updateProduct(dynamic productId, Map<String, dynamic> productData) async {
+  Future<void> updateProduct(
+    dynamic productId,
+    Map<String, dynamic> productData,
+  ) async {
     if (productId == null || productId.toString().trim().isEmpty) {
       throw Exception('Product ID is missing or null');
     }
