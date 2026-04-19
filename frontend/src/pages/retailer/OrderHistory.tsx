@@ -152,7 +152,7 @@ export default function OrderHistory() {
 
       try {
         // CLEAN API CALL (no fetch, no hardcoded URL)
-        const res = await API.get(`/orders/my`);
+        const res = await API.get("/orders/my");
 
         setOrders(res.data.orders.slice().reverse());
       } catch (err: any) {

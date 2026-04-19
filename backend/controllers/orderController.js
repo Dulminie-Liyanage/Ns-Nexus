@@ -154,9 +154,8 @@ export const createOrder = async (req, res) => {
 
 // GET RETAILER ORDER HISTORY
 export const getRetailerOrderHistory = async (req, res) => {
+  const userId = req.user.id;
   try {
-    const userId = req.user.id;
-
     // 1. get orders
     const [orders] = await db.query(
       `SELECT * FROM orders WHERE RetailerID = ? ORDER BY CreatedAt DESC`,
