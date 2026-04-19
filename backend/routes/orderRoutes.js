@@ -11,7 +11,7 @@ router.post("/", protect, orderController.placeOrder);
 router.get("/", protect, orderController.getOrders);
 
 // Get retailer-specific orders
-router.get("/retailer/:id", protect, orderController.getRetailerOrders);
+//router.get("/retailer/:id", protect, orderController.getRetailerOrders);
 
 // Get items of a specific order
 router.get("/:id/items", protect, orderController.getOrderItems);

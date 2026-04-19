@@ -65,7 +65,7 @@ export const approveOrder = (req, res) => {
   const orderId = req.params.id;
 
   db.query(
-    "UPDATE orders SET Status='approved' WHERE OrderID=?",
+    "UPDATE orders SET Status='Approved' WHERE OrderID=?",
     [orderId],
     (err) => {
       if (err) return res.status(500).json(err);
@@ -81,7 +81,7 @@ export const rejectOrder = (req, res) => {
   const { reason } = req.body;
 
   db.query(
-    "UPDATE orders SET Status='rejected', RejectionReason=? WHERE OrderID=?",
+    "UPDATE orders SET Status='Rejected', RejectionReason=? WHERE OrderID=?",
     [reason, orderId],
     (err) => {
       if (err) return res.status(500).json(err);
@@ -165,17 +165,17 @@ export const getRetailerOrderHistory = async (req, res) => {
     // 2. attach items to each order
     for (let order of orders) {
       const [items] = await db.query(
-        `SELECT 
-            oi.ItemID,
-            oi.ProductID,
-            oi.QtyRequested,
-            oi.QtyApproved,
-            oi.UnitPrice,
-            p.ProductName AS skuName
-         FROM order_items oi
-         JOIN products p ON oi.ProductID = p.ProductID
-         WHERE oi.OrderID = ?`,
-        [order.OrderID]
+       `SELECT 
+          oi.ItemID,
+          oi.ProductID,
+          oi.QtyRequested,
+          oi.QtyApproved,
+          oi.UnitPrice,
+          p.ProductName AS skuName
+      FROM order_items oi
+      JOIN products p ON oi.ProductID = p.ProductID
+      WHERE oi.OrderID = ?`,
+      [orderId],
       );
 
       order.items = items;
