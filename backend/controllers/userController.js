@@ -242,7 +242,7 @@ export const getDriverSchedule = async (req, res) => {
 // CREATE USER 
 export const createUser = async (req, res) => {
   try {
-    const { Name, Email, Role, Password, Phone, ShopName, Address } = req.body;
+    const { Name, Email, Role, Password, Phone, ShopName, Address, District } = req.body;
 
     const [existing] = await db.query(
       "SELECT * FROM users WHERE Email = ?",
@@ -255,8 +255,8 @@ export const createUser = async (req, res) => {
 
     await db.query(
   `INSERT INTO users 
-  (Name, Email, Role, PasswordHash, Phone, ShopName, Address, IsLocked, CreatedAt, UpdatedAt)
-  VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())`,
+  (Name, Email, Role, PasswordHash, Phone, ShopName, Address, District, IsLocked, CreatedAt, UpdatedAt)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NOW(), NOW())`,
   [
     Name,
     Email,
@@ -264,13 +264,14 @@ export const createUser = async (req, res) => {
     Password, 
     Phone,
     ShopName,
-    Address
+    Address,
+    District 
   ]
 );
 
     res.json({ message: "User created successfully" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to create user" });
+    console.error("FULL CREATE USER ERROR:", err) 
+    res.status(500).json({ error: err.message, sql: err.sqlMessage });
   }
 };

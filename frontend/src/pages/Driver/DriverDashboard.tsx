@@ -3,7 +3,7 @@ import { StatsCard } from "../../components/StatsCard";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
-import { getShipments, updateShipment } from "../../../serv/shipmentService";
+import { getShipments, updateShipment } from "../../serv/shipmentService.ts";
 import { Truck, CheckCircle2, Clock } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, } from "../../components/ui/select";
 import DashboardLayout from "../../components/DashboardLayout";

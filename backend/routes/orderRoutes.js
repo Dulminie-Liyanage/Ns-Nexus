@@ -28,4 +28,7 @@ router.put("/:id/assign-driver", protect, orderController.assignDriver);
 // Get warehouse-prioritized orders
 router.get("/warehouse-priority", protect, orderController.getWarehousePrioritizedOrders);
 
+// Get retailer order history
+router.get("/my", protect, orderController.getRetailerOrderHistory);
+
 export default router;

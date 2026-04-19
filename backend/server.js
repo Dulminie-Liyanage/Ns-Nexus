@@ -28,7 +28,7 @@ app.get("/test", (req, res) => {
 });
 
 // API Routes
-app.use("/api", userRoutes);
+app.use("/api/users", userRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/inventory", inventoryRoutes);

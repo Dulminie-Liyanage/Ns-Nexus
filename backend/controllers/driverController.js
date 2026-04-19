@@ -1,7 +1,7 @@
 import db from "../config/db.js";
 
-// GET ALL DRIVERS
-export const getDrivers = async (req, res) => {
+// GET DRIVER BY ID
+export const getDriverById = async (req, res) => {
   try {
     const sql = `
       SELECT 

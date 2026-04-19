@@ -38,24 +38,27 @@ const LogisticsDashboard = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [shipmentsRes, driversRes, vehiclesRes, ordersRes] =
-          await Promise.all([
-            API.get("/shipments"),
-            API.get("/drivers/available"), //FIXED
-            API.get("/vehicles"),
-            API.get("/orders"),
-          ]);
+        const [driversRes] = await Promise.all([
+          API.get("/drivers"),
+        ]);
 
-        setShipments(shipmentsRes.data || []);
-        setDrivers(driversRes.data || []);
-        setVehicles(vehiclesRes.data || []);
-        setOrders(ordersRes.data || []);
+        setDrivers(
+          (driversRes.data || []).map((d: any) => ({
+            id: d.id,
+            name: d.name,
+            status: d.availability_status,
+          }))
+        );
       } catch (err) {
-        console.error("Error loading logistics data:", err);
+        console.error("Error loading drivers:", err);
       }
     };
 
-    fetchData();
+    fetchData(); // run once
+
+    const interval = setInterval(fetchData, 3000); // auto refresh
+
+    return () => clearInterval(interval);
   }, []);
 
   const createShipment = async () => {
@@ -141,45 +144,51 @@ const LogisticsDashboard = () => {
         {/* DRIVERS CARD */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Drivers</CardTitle>
+            <CardTitle>Drivers</CardTitle>
           </CardHeader>
 
           <CardContent>
             {drivers.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No drivers found.
+                No drivers found
               </p>
             ) : (
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                
                 {drivers.map((d) => (
                   <div
                     key={d.id}
-                    className="p-3 border rounded-lg flex items-center justify-between"
+                    className="p-4 border rounded-xl shadow-sm flex flex-col gap-2"
                   >
-                    {/* LEFT SIDE */}
+                    
+                    {/* NAME */}
                     <div>
-                      <p className="font-medium">{d.Name}</p>
+                      <p className="font-semibold text-lg">{d.name}</p>
                       <p className="text-xs text-muted-foreground">
                         Driver ID: {d.id}
                       </p>
                     </div>
 
-                    {/* RIGHT SIDE - STATUS */}
-                    <span
-                      className={`text-xs px-2 py-1 rounded-full font-medium ${
-                        d.CurrentStatus === "available"
-                          ? "bg-green-100 text-green-700"
-                          : d.CurrentStatus === "busy"
-                          ? "bg-yellow-100 text-yellow-700"
-                          : d.CurrentStatus === "off_duty"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-gray-100 text-gray-600"
-                      }`}
-                    >
-                      {d.CurrentStatus || "unknown"}
-                    </span>
+                    {/* STATUS BADGE */}
+                    <div>
+                      <span
+                        className={`text-xs px-3 py-1 rounded-full font-medium ${
+                          d.availability_status === "AVAILABLE"
+                            ? "bg-green-100 text-green-700"
+                            : d.availability_status === "BUSY"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : d.availability_status === "ON_BREAK"
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {d.availability_status}
+                      </span>
+                    </div>
+
                   </div>
                 ))}
+
               </div>
             )}
           </CardContent>
@@ -210,7 +219,7 @@ const LogisticsDashboard = () => {
                     ) : (
                       drivers.map((d) => (
                         <SelectItem key={d.id} value={String(d.id)}>
-                          {d.Name}
+                          {d.name}
                         </SelectItem>
                       ))
                     )}

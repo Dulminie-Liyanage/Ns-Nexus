@@ -151,8 +151,8 @@ export default function OrderHistory() {
       setLoading(true);
 
       try {
-        // ✅ CLEAN API CALL (no fetch, no hardcoded URL)
-        const res = await API.get(`/orders/retailer/${user.id}`);
+        // CLEAN API CALL (no fetch, no hardcoded URL)
+        const res = await API.get(`/orders/my`);
 
         setOrders(res.data.orders.slice().reverse());
       } catch (err: any) {

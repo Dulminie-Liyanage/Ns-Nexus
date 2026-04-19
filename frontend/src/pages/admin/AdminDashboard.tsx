@@ -1,74 +1,57 @@
-import { use, useEffect, useState } from "react";
-import axiosInstance from "../../api/axios";
+import { useEffect, useState } from "react";
+import API from "../../api/axios";
 import { StatsCard } from "../../components/StatsCard";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Users, ShoppingCart, Shield, Activity } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import DashboardLayout from "../../components/DashboardLayout";
 import { Switch } from "../../components/ui/switch";
+import { Button } from "../../components/ui/button";
 
 const AdminDashboard = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
+  const [openAdd, setOpenAdd] = useState(false);
 
-  const fetchUsers = async () => {
+  const [form, setForm] = useState({
+      Name: "",
+      Email: "",
+      Phone: "",
+      Password: "",
+      Role: "Admin",
+      ShopName: "",
+      Address: "",
+      District: ""  
+    }
+  );
+
+  // MOVE THIS OUTSIDE
+  const fetchData = async () => {
     try {
-      const res = await axiosInstance.get("/users");
-      setUsers(res.data);
+      const usersRes = await API.get("/users");
+      const ordersRes = await API.get("/orders");
+
+      setUsers(usersRes.data);
+      setOrders(ordersRes.data);
     } catch (err) {
-      console.error(err);
+      console.error("Admin dashboard error:", err);
     }
   };
 
+  // CALL ON LOAD
   useEffect(() => {
-    fetchUsers();
-  }, []); 
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const usersRes = await axiosInstance.get("/users");
-        const ordersRes = await axiosInstance.get("/orders");
-        const logsRes = await axiosInstance.get("/audit-logs");
-
-        setUsers(usersRes.data);
-        setOrders(ordersRes.data);
-        setLogs(logsRes.data);
-      } catch (err) {
-        console.error("Admin dashboard error:", err);
-      }
-    };
-
     fetchData();
   }, []);
 
-  useEffect(() => {
-  const fetchUsers = async () => {
+  // TOGGLE USER STATUS
+  const updateUserStatus = async (userId: number) => {
     try {
-      const res = await axiosInstance.get("/users");
-
-      console.log("🔥 USERS FROM API:", res.data);
-
-      setUsers(res.data);
-    } catch (err) {
-      console.error("❌ USERS FETCH ERROR:", err);
-    }
-  };
-
-  fetchUsers();
-}, []);
-
-  const toggleUserStatus = async (userId: number) => {
-    try {
-      const res = await axiosInstance.put(`/users/${userId}/status`);
-
-      const newStatus = res.data.status;
+      await API.put(`/users/${userId}/status`);
 
       setUsers((prev) =>
         prev.map((u) =>
           u.UserID === userId
-            ? { ...u, IsLocked: newStatus }
+            ? { ...u, IsLocked: u.IsLocked === 0 ? 1 : 0 }
             : u
         )
       );
@@ -77,72 +60,75 @@ const AdminDashboard = () => {
     }
   };
 
-  const ordersByStatus = [
-    { status: "Pending", count: orders.filter(o => o.status === "pending").length },
-    { status: "Approved", count: orders.filter(o => o.status === "approved").length },
-    { status: "Shipped", count: orders.filter(o => o.status === "shipped").length },
-    { status: "Delivered", count: orders.filter(o => o.status === "delivered").length },
-    { status: "Rejected", count: orders.filter(o => o.status === "rejected").length },
-  ];
-
-  const [openAdd, setOpenAdd] = useState(false);
-
-  const [form, setForm] = useState({
-    Name: "",
-    Email: "",
-    Role: "",
-    Password: "",
-    Phone: "",
-    ShopName: "",
-    Address: ""
-  });
-
+  // HANDLE INPUT
   const handleChange = (e: any) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
+  // ADD USER
   const handleAddUser = async () => {
+    console.log("SAVE CLICKED");
     try {
-      await axiosInstance.post("/users", form);
+      const payload = {
+        ...form,
+        PasswordHash: form.Password
+      };
+      await API.post("/users", payload);
 
       alert("User created successfully");
 
       setOpenAdd(false);
 
-      fetchUsers(); // refresh table
+      setForm({
+        Name: "",
+        Email: "",
+        Phone: "",
+        Password: "",
+        Role: "Admin",
+        ShopName: "",
+        Address: "",
+        District: ""
+      });
+
+      // NOW THIS WORKS
+      fetchData();
 
     } catch (err: any) {
-      console.error(err);
+      console.error("FULL ERROR:", err.response?.data);
       alert(err.response?.data?.message || "Error creating user");
     }
   };
 
   return (
     <DashboardLayout role="admin">
-        <div className="space-y-6">
+      <div className="space-y-6">
+
+        {/* HEADER */}
         <div>
-            <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-            <p className="text-muted-foreground">System overview and management</p>
+          <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+          <p className="text-muted-foreground">
+            System overview and management
+          </p>
         </div>
+
         {/* STATS */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatsCard title="Total Users" value={users.length} icon={<Users className="w-5 h-5" />} />
-            <StatsCard title="Total Orders" value={orders.length} icon={<ShoppingCart className="w-5 h-5" />} />
-            <StatsCard title="Active Users" value={users.filter(u => u.status === "active").length} icon={<Shield className="w-5 h-5" />} />
-            <StatsCard title="Audit Events" value={logs.length} icon={<Activity className="w-5 h-5" />} />
+          <StatsCard title="Total Users" value={users.length} icon={<Users className="w-5 h-5" />} />
+          <StatsCard title="Total Orders" value={orders.length} icon={<ShoppingCart className="w-5 h-5" />} />
+          <StatsCard title="Active Users" value={users.filter(u => u.IsLocked === 0).length} icon={<Shield className="w-5 h-5" />} />
+          <StatsCard title="Audit Events" value={logs.length} icon={<Activity className="w-5 h-5" />} />
         </div>
 
-        <div className="flex justify-between items-center mb-4">
+        {/* ADD USER BUTTON */}
+        <div className="flex justify-between items-center">
           <h2 className="text-lg font-semibold">User Accounts</h2>
 
-          <button
-            className="bg-blue-600 text-white px-4 py-2 rounded"
-            onClick={() => setOpenAdd(true)}
-          >
+          <Button onClick={() => setOpenAdd(true)}>
             + Add User
-          </button>
+          </Button>
         </div>
 
+        {/* ADD USER MODAL */}
         {openAdd && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center">
             <div className="bg-white p-6 rounded-lg w-[400px] space-y-3">
@@ -154,16 +140,17 @@ const AdminDashboard = () => {
               <input name="Password" placeholder="Password" onChange={handleChange} className="border p-2 w-full" />
 
               <select name="Role" onChange={handleChange} className="border p-2 w-full">
-                <option value="admin">Admin</option>
-                <option value="retailer">Retailer</option>
-                <option value="driver">Warehouse Manager</option>
-                <option value="driver">Logistic Manager</option>
-                <option value="driver">Driver</option>
+                <option value="Admin">Admin</option>
+                <option value="Retailer">Retailer</option>
+                <option value="Warehouse">Warehouse Manager</option>
+                <option value="Logistics">Logistic Manager</option>
+                <option value="Driver">Driver</option>
               </select>
 
               <input name="Phone" placeholder="Phone" onChange={handleChange} className="border p-2 w-full" />
               <input name="ShopName" placeholder="Shop Name" onChange={handleChange} className="border p-2 w-full" />
               <input name="Address" placeholder="Address" onChange={handleChange} className="border p-2 w-full" />
+              <input name="District" placeholder="District" onChange={handleChange} className="border p-2 w-full" />
 
               <div className="flex justify-end gap-2">
                 <button onClick={() => setOpenAdd(false)} className="px-3 py-1 border">
@@ -184,63 +171,43 @@ const AdminDashboard = () => {
           <CardHeader>
             <CardTitle>User Accounts</CardTitle>
           </CardHeader>
+
           <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-2 font-medium text-muted-foreground">UserID</th>
-                    <th className="text-left py-3 px-2 font-medium text-muted-foreground">Email</th>
-                    <th className="text-left py-3 px-2 font-medium text-muted-foreground">Role</th>
-                    <th className="text-left py-3 px-2 font-medium text-muted-foreground">Status</th>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left p-2">ID</th>
+                  <th className="text-left p-2">Email</th>
+                  <th className="text-left p-2">Role</th>
+                  <th className="text-left p-2">Status</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.UserID} className="border-b">
+                    <td className="p-2">{u.UserID}</td>
+                    <td className="p-2">{u.Email}</td>
+                    <td className="p-2 capitalize">{u.Role}</td>
+
+                    <td className="p-2 flex items-center gap-3">
+                      <Switch
+                        checked={u.IsLocked === 0}
+                        onCheckedChange={() => updateUserStatus(u.UserID)}
+                      />
+
+                      <span className={u.IsLocked === 0 ? "text-green-600" : "text-red-500"}>
+                        {u.IsLocked === 0 ? "Active" : "Inactive"}
+                      </span>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {users.map((u) => (
-                    <tr
-                      key={u.UserID}
-                      className="border-b last:border-0 hover:bg-muted/50"
-                    >
-                      <td className="py-3 px-2 font-medium">{u.UserID}</td>
-
-                      <td className="py-3 px-2 text-muted-foreground">
-                        {u.Email}
-                      </td>
-
-                      <td className="py-3 px-2 capitalize">
-                        {u.Role}
-                      </td>
-
-                      {/* STATUS COLUMN FIXED */}
-                      <td className="py-3 px-2">
-                        <div className="flex items-center justify-start gap-3">
-                          
-                          <Switch
-                            checked={u.IsLocked === 0}
-                            onCheckedChange={() => {                              console.log("TOGGLE CLICKED:", u.UserID);
-                              toggleUserStatus(u.UserID);
-                            }}
-                          />
-
-                          <span
-                            className={`text-xs font-medium ${
-                              u.IsLocked === 0
-                                ? "text-green-600"
-                                : "text-red-500"
-                            }`}
-                          >
-                            {u.IsLocked === 0 ? "Active" : "Inactive"}
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </CardContent>
         </Card>
-        </div>
+
+      </div>
     </DashboardLayout>
   );
 };

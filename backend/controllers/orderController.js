@@ -30,7 +30,7 @@ export const placeOrder = (req, res) => {
 };
 
 
-// GET ALL ORDERS (for admin/warehouse)
+// GET ALL ORDERS (for warehouse)
 export const getOrders = async (req, res) => {
   try {
     const [rows] = await db.query("SELECT * FROM orders");
@@ -40,20 +40,6 @@ export const getOrders = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
-
-
-// GET ORDERS BY RETAILER
-export const getRetailerOrders = async (req, res) => {
-  const { id } = req.params;
-
-  const [orders] = await db.query(
-    "SELECT * FROM orders WHERE RetailerID = ? ORDER BY CreatedAt DESC",
-    [id]
-  );
-
-  res.json({ orders });
-};
-
 
 // GET ORDER ITEMS
 export const getOrderItems = (req, res) => {
@@ -163,5 +149,43 @@ export const createOrder = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Order creation failed" });
+  }
+};
+
+// GET RETAILER ORDER HISTORY
+export const getRetailerOrderHistory = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // 1. get orders
+    const [orders] = await db.query(
+      `SELECT * FROM orders WHERE RetailerID = ? ORDER BY CreatedAt DESC`,
+      [userId]
+    );
+
+    // 2. attach items to each order
+    for (let order of orders) {
+      const [items] = await db.query(
+        `SELECT 
+            oi.ItemID,
+            oi.ProductID,
+            oi.QtyRequested,
+            oi.QtyApproved,
+            oi.UnitPrice,
+            p.ProductName AS skuName
+         FROM order_items oi
+         JOIN products p ON oi.ProductID = p.ProductID
+         WHERE oi.OrderID = ?`,
+        [order.OrderID]
+      );
+
+      order.items = items;
+    }
+
+    res.json({ orders });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: err.message });
   }
 };
