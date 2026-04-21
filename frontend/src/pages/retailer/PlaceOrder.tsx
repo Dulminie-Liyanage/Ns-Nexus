@@ -141,7 +141,7 @@ export default function PlaceOrder() {
         }
       );
 
-      console.log("ORDER RESPONSE:", res.data); // debug
+      console.log("ORDER RESPONSE:", res.data); 
 
       // SUCCESS POPUP
       setSuccess(`Order #${res.data.orderId} placed successfully!`);

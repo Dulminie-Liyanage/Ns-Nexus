@@ -7,7 +7,7 @@ import { AuthProvider, useAuth } from "./lib/auth-context.tsx";
 import Login from "./pages/Login";
 import RetailerDashboard from "../src/pages/retailer/RetailerDashboard.tsx";
 import PlaceOrder from "./pages/retailer/PlaceOrder";
-import OrderHistory from "./pages/warehouse/WarehouseOrders.tsx";
+import OrderHistory from "./pages/retailer/OrderHistory.tsx";
 import WarehouseDashboard from "./pages/warehouse/WarehouseDashboard.tsx";
 import WarehouseOrders from "./pages/warehouse/WarehouseOrders.tsx";
 import Inventory from "./pages/warehouse/Inventory.tsx";

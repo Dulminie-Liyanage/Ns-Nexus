@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "../../components/DashboardLayout";
 import { useAuth } from "../../lib/auth-context";
-import API from "../../lib/utils"; // use centralized axios
-
+import API from "../../lib/utils"; 
 import { Card, CardContent } from "../../../src/components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
