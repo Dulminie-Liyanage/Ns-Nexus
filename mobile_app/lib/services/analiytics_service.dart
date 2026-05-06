@@ -111,16 +111,19 @@ class AnalyticsService {
 
   // ── Notifications ─────────────────────────────────────────────────────────
   Future<Map<String, dynamic>> getNotifications(String retailerId) async {
-    final token = await _token();
-    final res = await http
-        .get(
-          Uri.parse('$_base/notifications/$retailerId'),
-          headers: _headers(token),
-        )
-        .timeout(const Duration(seconds: 15));
-    if (res.statusCode == 200)
-      return _sanitize(jsonDecode(res.body)) as Map<String, dynamic>;
-    throw Exception('Notifications fetch failed: ${res.statusCode}');
+    try {
+      final token = await _token();
+      final res = await http
+          .get(
+            Uri.parse('$_base/notifications/$retailerId'),
+            headers: _headers(token),
+          )
+          .timeout(const Duration(seconds: 3));
+      if (res.statusCode == 200) {
+        return _sanitize(jsonDecode(res.body)) as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return {'notifications': <dynamic>[], 'unreadCount': 0};
   }
 
   Future<void> markAllRead(String retailerId) async {

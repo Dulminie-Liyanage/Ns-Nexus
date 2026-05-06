@@ -34,21 +34,25 @@ class _QuickOrderScreenState extends State<QuickOrderScreen> {
   @override
   void initState() {
     super.initState();
-    // Defer ALL async work so screen renders instantly with loading skeleton
-    Future.microtask(() async {
-      await _loadPriority();
-      await _loadPastOrders();
+    // addPostFrameCallback — runs AFTER first frame is painted, never blocks UI
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Priority from local prefs — fast
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final strVal = prefs.getString('priorityStatus') ?? '';
+        final intVal = prefs.getInt('priorityStatus') ?? 0;
+        if (mounted) {
+          setState(
+            () =>
+                _isPriority = strVal == '1' || strVal == 'true' || intVal == 1,
+          );
+        }
+      } catch (_) {
+        if (mounted) setState(() => _isPriority = false);
+      }
+      // Then load orders from network
+      _loadPastOrders();
     });
-  }
-
-  Future<void> _loadPriority() async {
-    final prefs = await SharedPreferences.getInstance();
-    // Try getString first (login saves as '1'/'0')
-    // Fall back to getInt in case it was stored differently
-    final strVal = prefs.getString('priorityStatus') ?? '';
-    final intVal = prefs.getInt('priorityStatus') ?? 0;
-    final isPriority = strVal == '1' || strVal == 'true' || intVal == 1;
-    if (mounted) setState(() => _isPriority = isPriority);
   }
 
   Future<void> _loadPastOrders() async {

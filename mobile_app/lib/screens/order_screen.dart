@@ -43,7 +43,7 @@ class _OrderScreenState extends State<OrderScreen> {
   void initState() {
     super.initState();
     _isUrgent = false; // always start false, check priority before enabling
-    Future.microtask(() => _loadProducts());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadProducts());
     // If opened from "Create Urgent Order" card, verify priority first
     if (widget.isUrgent) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _tryEnableUrgent());

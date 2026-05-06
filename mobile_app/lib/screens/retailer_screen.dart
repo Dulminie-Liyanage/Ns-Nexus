@@ -23,10 +23,28 @@ class _RetailerScreenState extends State<RetailerScreen> {
   @override
   void initState() {
     super.initState();
-    // Defer ALL async work — screen renders instantly, data loads after
-    Future.microtask(() async {
-      await _loadPriority();
-      await _loadUnreadCount();
+    // Load priority synchronously from cached prefs
+    _loadPrioritySync();
+    // Fire notification fetch completely independently - never blocks UI
+    _loadUnreadCount();
+  }
+
+  void _loadPrioritySync() {
+    // Run after first frame so setState works
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final strVal = prefs.getString('priorityStatus') ?? '';
+        final intVal = prefs.getInt('priorityStatus') ?? 0;
+        if (mounted) {
+          setState(
+            () =>
+                _isPriority = strVal == '1' || strVal == 'true' || intVal == 1,
+          );
+        }
+      } catch (_) {
+        if (mounted) setState(() => _isPriority = false);
+      }
     });
   }
 
@@ -37,7 +55,7 @@ class _RetailerScreenState extends State<RetailerScreen> {
       if (userId.isEmpty || userId == 'null' || userId == '0') return;
       final data = await _analyticsService
           .getNotifications(userId)
-          .timeout(const Duration(seconds: 5));
+          .timeout(const Duration(seconds: 3));
       if (mounted) {
         setState(
           () => _unreadNotifications =
@@ -47,15 +65,6 @@ class _RetailerScreenState extends State<RetailerScreen> {
     } catch (_) {
       // Badge is non-critical — fail silently
     }
-  }
-
-  Future<void> _loadPriority() async {
-    final prefs = await SharedPreferences.getInstance();
-    final strVal = prefs.getString('priorityStatus') ?? '';
-    final intVal = prefs.getInt('priorityStatus') ?? 0;
-    setState(
-      () => _isPriority = strVal == '1' || strVal == 'true' || intVal == 1,
-    );
   }
 
   @override
