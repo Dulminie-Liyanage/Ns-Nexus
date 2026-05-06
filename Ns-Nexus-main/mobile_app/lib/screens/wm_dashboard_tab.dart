@@ -69,7 +69,7 @@ class _WMDashboardTabState extends State<WMDashboardTab> {
                 icon: Icons.inventory_2_outlined,
                 title: 'Total Orders',
                 subtitle: '$total processed last 30 days',
-                onTap: () => widget.onTabChange(2, filter: null),
+                onTap: () => widget.onTabChange(2, filter: 'all'),
               ),
               const SizedBox(height: 16),
               _buildWMCard(

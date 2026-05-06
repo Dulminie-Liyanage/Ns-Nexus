@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../config/db');
 
 // POST /orders - retailer places an order
+// US-10: checkPriorityStatus() — only priority retailers can place urgent orders
 router.post('/', (req, res) => {
     const { retailer_id, delivery_date, is_urgent, items } = req.body;
 
@@ -10,20 +11,45 @@ router.post('/', (req, res) => {
         return res.status(400).json({ message: 'Missing required fields' });
     }
 
+    // US-10: If urgent order requested, check priority status first
+    if (is_urgent) {
+        db.query('SELECT PriorityStatus FROM users WHERE UserID = ?',
+            [retailer_id], (err, results) => {
+                if (err) return res.status(500).json({ message: 'Database error', error: err });
+                if (results.length === 0) return res.status(404).json({ message: 'Retailer not found' });
+                if (results[0].PriorityStatus !== 1) {
+                    return res.status(403).json({
+                        message: 'Urgent orders are only available to priority retailers. Contact your Nestlé representative to upgrade your account.',
+                        errorCode: 'NOT_PRIORITY_RETAILER'
+                    });
+                }
+                // Priority check passed — place urgent order
+                _placeOrder(req, res, retailer_id, delivery_date, is_urgent, items);
+            });
+        return; // wait for priority check callback
+    }
+
+    // Standard order — no priority check needed
+    _placeOrder(req, res, retailer_id, delivery_date, is_urgent, items);
+});
+
+// Internal helper to place an order after priority check
+function _placeOrder(req, res, retailer_id, delivery_date, is_urgent, items) {
+
     const orderQuery = 'INSERT INTO orders (RetailerID, Status, IsUrgent, DeliveryDate) VALUES (?, ?, ?, ?)';
     db.query(orderQuery, [retailer_id, 'pending', is_urgent ? 1 : 0, delivery_date], (err, result) => {
         if (err) return res.status(500).json({ message: 'Database error', error: err });
 
         const orderID = result.insertId;
         const productIds = items.map(item => item.product_id);
-        
+
         const pricingQuery = 'SELECT ProductID, Price, Weight FROM products WHERE ProductID IN (?)';
         db.query(pricingQuery, [productIds], (priceErr, productResults) => {
             if (priceErr) return res.status(500).json({ message: 'Error fetching product data', error: priceErr });
 
             const productMap = {};
-            productResults.forEach(p => { 
-                productMap[p.ProductID] = { price: p.Price, weight: p.Weight }; 
+            productResults.forEach(p => {
+                productMap[p.ProductID] = { price: p.Price, weight: p.Weight };
             });
 
             let totalPrice = 0;
@@ -40,43 +66,158 @@ router.post('/', (req, res) => {
             db.query(itemQuery, [itemValues], (err2) => {
                 if (err2) return res.status(500).json({ message: 'Error saving order items', error: err2 });
 
-                db.query('UPDATE orders SET TotalPrice = ?, TotalWeight = ? WHERE OrderID = ?', 
-                [totalPrice, totalWeight, orderID], (updateErr) => {
-                    if (updateErr) console.error("Totals update failed", updateErr);
-                    
-                    return res.status(201).json({
-                        message: 'Order placed successfully',
-                        order_id: orderID,
-                        total_price: totalPrice,
-                        total_weight: totalWeight
+                db.query('UPDATE orders SET TotalPrice = ?, TotalWeight = ? WHERE OrderID = ?',
+                    [totalPrice, totalWeight, orderID], (updateErr) => {
+                        if (updateErr) console.error('Totals update failed', updateErr);
+                        return res.status(201).json({
+                            message: 'Order placed successfully',
+                            order_id: orderID,
+                            total_price: totalPrice,
+                            total_weight: totalWeight
+                        });
                     });
+            });
+        });
+    });
+}
+
+// GET /orders - warehouse manager sees all orders
+// LoyaltyRank calculated from total past orders: Gold>=10, Silver>=5, Bronze<5
+router.get('/', (req, res) => {
+    const statusFilter = req.query.status;
+    let query = `
+        SELECT o.OrderID, o.Status, o.IsUrgent, o.DeliveryDate, o.RejectionReason,
+               o.CreatedAt, o.CurrentStage, o.TotalPrice, o.TotalWeight,
+               u.Name as RetailerName, u.ShopName, u.District, u.UserID as RetailerID,
+               COALESCE(lr.approvedCount, 0) as approvedCount,
+               CASE
+                   WHEN COALESCE(lr.approvedCount, 0) >= 10 THEN 'Gold'
+                   WHEN COALESCE(lr.approvedCount, 0) >= 5  THEN 'Silver'
+                   ELSE 'Bronze'
+               END as loyaltyRank
+        FROM orders o
+        JOIN users u ON o.RetailerID = u.UserID
+        LEFT JOIN (
+            SELECT RetailerID, COUNT(*) as approvedCount
+            FROM orders
+            WHERE Status IN ('approved', 'partially_approved', 'delivered')
+            GROUP BY RetailerID
+        ) lr ON lr.RetailerID = o.RetailerID
+    `;
+    const params = [];
+    if (statusFilter) {
+        query += ' WHERE o.Status = ?';
+        params.push(statusFilter);
+    }
+    query += ' ORDER BY o.IsUrgent DESC, approvedCount DESC, o.CreatedAt DESC';
+
+    db.query(query, params, (err, results) => {
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+        // Calculate loyalty rank from order count
+        const orders = results.map(o => ({
+            ...o,
+            loyaltyRank: o.totalOrders >= 10 ? 'Gold'
+                       : o.totalOrders >= 5  ? 'Silver'
+                       : 'Bronze'
+        }));
+        res.status(200).json({ orders });
+    });
+});
+
+// GET /orders/report/daily - US-15: requestReport() + generateSummary()
+// Fetches both order AND delivery data then generates summary
+
+router.get('/report/daily', (req, res) => {
+    const today = new Date().toISOString().split('T')[0];
+
+    // requestReport() — fetch order AND delivery data
+    const summaryQuery = `
+        SELECT
+            COUNT(*) AS totalOrders,
+            SUM(CASE WHEN Status IN ('approved','packing','in_3pl_transit',
+                'ready_to_ship','out_for_delivery','delivered') THEN 1 ELSE 0 END) AS approvedOrders,
+            SUM(CASE WHEN Status = 'rejected' THEN 1 ELSE 0 END) AS rejectedOrders,
+            SUM(CASE WHEN Status = 'pending' THEN 1 ELSE 0 END) AS pendingOrders,
+            SUM(CASE WHEN Status = 'delivered' THEN 1 ELSE 0 END) AS deliveredOrders,
+            SUM(IFNULL(TotalPrice, 0)) AS totalValue
+        FROM orders
+        WHERE DATE(CreatedAt) = ?
+    `;
+
+    db.query(summaryQuery, [today], (err, summaryResults) => {
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+
+        const byRetailerQuery = `
+            SELECT u.Name AS retailerName, COUNT(*) AS orderCount
+            FROM orders o
+            JOIN users u ON o.RetailerID = u.UserID
+            WHERE DATE(o.CreatedAt) = ?
+            GROUP BY o.RetailerID, u.Name
+            ORDER BY orderCount DESC
+        `;
+
+        db.query(byRetailerQuery, [today], (err2, retailerResults) => {
+            if (err2) return res.status(500).json({ message: 'Database error', error: err2 });
+
+            const lowStockQuery = `
+                SELECT ProductName AS name, StockLevel AS remaining
+                FROM products
+                WHERE StockLevel < 10
+                ORDER BY StockLevel ASC
+            `;
+
+            db.query(lowStockQuery, (err3, lowStockResults) => {
+                if (err3) return res.status(500).json({ message: 'Database error', error: err3 });
+
+                // generateSummary() — calculate final report data
+                const s = summaryResults[0];
+                res.status(200).json({
+                    totalOrders: parseInt(s.totalOrders) || 0,
+                    approvedOrders: parseInt(s.approvedOrders) || 0,
+                    rejectedOrders: parseInt(s.rejectedOrders) || 0,
+                    pendingOrders: parseInt(s.pendingOrders) || 0,
+                    deliveredOrders: parseInt(s.deliveredOrders) || 0,
+                    totalValue: parseFloat(s.totalValue) || 0,
+                    ordersByRetailer: retailerResults,
+                    lowStockItems: lowStockResults,
+                    generatedAt: new Date().toLocaleString('en-GB'),
                 });
             });
         });
     });
 });
 
-// GET /orders - warehouse manager sees all orders
-router.get('/', (req, res) => {
+// GET /orders/driver/:id - delivery driver sees their assigned orders via deliveries table
+router.get('/driver/:id', (req, res) => {
+    const driverID = req.params.id;
     const query = `
-        SELECT o.OrderID, o.Status, o.IsUrgent, o.DeliveryDate, o.RejectionReason, o.CreatedAt, o.CurrentStage,
-               u.Name as RetailerName, u.ShopName, u.District
-        FROM orders o
+        SELECT o.OrderID, o.Status, o.DeliveryDate, o.CurrentStage,
+               o.TotalPrice, o.TotalWeight,
+               u.Name AS RetailerName, u.ShopName, u.Address, u.Phone,
+               d.DeliveryID, d.Status AS DeliveryStatus, d.AssignedAt, d.DeliveredAt,
+               d.HubID
+        FROM deliveries d
+        JOIN orders o ON d.OrderID = o.OrderID
         JOIN users u ON o.RetailerID = u.UserID
-        ORDER BY o.CreatedAt DESC
+        WHERE d.DriverID = ? AND d.Status NOT IN ('delivered', 'failed')
+        ORDER BY d.AssignedAt ASC
     `;
-    db.query(query, (err, results) => {
+    db.query(query, [driverID], (err, results) => {
         if (err) return res.status(500).json({ message: 'Database error', error: err });
-        res.status(200).json({ message: 'Orders fetched successfully', orders: results });
+        res.status(200).json({ orders: results });
     });
 });
 
-// GET /orders/retailer/:id - retailer sees their own orders
+// GET /orders/retailer/:id - retailer sees ONLY their own orders
 router.get('/retailer/:id', (req, res) => {
     const retailerID = req.params.id;
+    // Validate retailerID to prevent empty/undefined fetching all orders
+    if (!retailerID || retailerID === 'undefined' || retailerID === '0') {
+        return res.status(400).json({ message: 'Invalid retailer ID' });
+    }
     const query = `
-        SELECT o.OrderID, o.Status, o.IsUrgent, o.DeliveryDate, 
-               o.RejectionReason, o.CreatedAt, o.TotalPrice, 
+        SELECT o.OrderID, o.RetailerID, o.Status, o.IsUrgent, o.DeliveryDate,
+               o.RejectionReason, o.CreatedAt, o.TotalPrice,
                o.TotalWeight, o.CurrentStage
         FROM orders o
         WHERE o.RetailerID = ?
@@ -84,70 +225,37 @@ router.get('/retailer/:id', (req, res) => {
     `;
     db.query(query, [retailerID], (err, results) => {
         if (err) return res.status(500).json({ message: 'Database error', error: err });
-        res.status(200).json({ message: 'Orders fetched successfully', orders: results });
+        res.status(200).json({ orders: results });
     });
 });
 
-// PUT /orders/:id - Handle Approval, Rejection, and Partial Approval
+// GET /orders/:id/items - get items for a specific order
+router.get('/:id/items', (req, res) => {
+    const orderID = req.params.id;
+    const query = `
+        SELECT oi.ItemID, oi.QtyRequested, oi.QtyApproved,
+               p.ProductName, p.Unit, p.Price,
+               o.Status, o.RejectionReason
+        FROM order_items oi
+        JOIN products p ON oi.ProductID = p.ProductID
+        JOIN orders o ON oi.OrderID = o.OrderID
+        WHERE oi.OrderID = ?
+    `;
+    db.query(query, [orderID], (err, results) => {
+        if (err) return res.status(500).json({ message: 'Database error', error: err });
+        res.status(200).json({ items: results });
+    });
+});
+
+// PUT /orders/:id - approve or reject order
 router.put('/:id', (req, res) => {
     const orderID = req.params.id;
     const { status, rejection_reason, items } = req.body;
 
     if (!status) return res.status(400).json({ message: 'Status is required' });
 
-    // --- CASE 1: PARTIAL APPROVAL ---
-    if (status === 'partially_approved' && items && items.length > 0) {
-        db.beginTransaction((err) => {
-            if (err) return res.status(500).json({ message: 'Transaction Error', error: err });
-
-            const updateOrder = 'UPDATE orders SET Status = ?, CurrentStage = 2 WHERE OrderID = ?';
-            db.query(updateOrder, [status, orderID], (err1) => {
-                if (err1) return db.rollback(() => res.status(500).json(err1));
-
-                const queries = items.map(item => {
-                    return new Promise((resolve, reject) => {
-                        const sql = 'UPDATE order_items SET QtyApproved = ? WHERE OrderID = ? AND ProductID = ?';
-                        db.query(sql, [item.qty_approved, orderID, item.product_id], (err2) => {
-                            if (err2) reject(err2);
-                            resolve();
-                        });
-                    });
-                });
-
-                Promise.all(queries)
-                .then(() => {
-                    const deductStockQuery = `
-                        UPDATE products p
-                        JOIN order_items oi ON p.ProductID = oi.ProductID
-                        SET p.StockLevel = p.StockLevel - oi.QtyApproved
-                        WHERE oi.OrderID = ?
-                    `;
-                    db.query(deductStockQuery, [orderID], (errStock) => {
-                        if (errStock) return db.rollback(() => res.status(500).json({ message: 'Stock update failed', error: errStock }));
-
-                        const recalculateQuery = `
-                            UPDATE orders o
-                            SET 
-                                TotalPrice = (SELECT SUM(IFNULL(oi.QtyApproved, 0) * IFNULL(oi.UnitPrice, 0)) FROM order_items oi WHERE oi.OrderID = o.OrderID),
-                                TotalWeight = (SELECT SUM(IFNULL(oi.QtyApproved, 0) * IFNULL(p.Weight, 0)) FROM order_items oi JOIN products p ON oi.ProductID = p.ProductID WHERE oi.OrderID = o.OrderID)
-                            WHERE o.OrderID = ?
-                        `;
-                        db.query(recalculateQuery, [orderID], (errRecalc) => {
-                            if (errRecalc) return db.rollback(() => res.status(500).json({ message: 'Recalc error', error: errRecalc }));
-
-                            db.commit((err3) => {
-                                if (err3) return db.rollback(() => res.status(500).json(err3));
-                                res.status(200).json({ message: 'Order partially approved and stock deducted!' });
-                            });
-                        });
-                    });
-                })
-                .catch(err4 => db.rollback(() => res.status(500).json(err4)));
-            });
-        });
-
-    // --- CASE 2: FULL APPROVAL ---
-    } else if (status === 'approved') {
+    // CASE 1: FULL APPROVAL
+    if (status === 'approved') {
         db.beginTransaction((err) => {
             if (err) return res.status(500).json(err);
 
@@ -177,10 +285,10 @@ router.put('/:id', (req, res) => {
             });
         });
 
-    // --- CASE 3: REJECTION ---
+    // CASE 3: REJECTION
     } else if (status === 'rejected') {
         if (!rejection_reason) return res.status(400).json({ message: 'Rejection reason is required' });
-        const rejectQuery = 'UPDATE orders SET Status = ?, RejectionReason = ? WHERE OrderID = ?';
+        const rejectQuery = 'UPDATE orders SET Status = ?, RejectionReason = ?, CurrentStage = 2 WHERE OrderID = ?';
         db.query(rejectQuery, [status, rejection_reason, orderID], (err) => {
             if (err) return res.status(500).json({ message: 'Database error', error: err });
             res.status(200).json({ message: 'Order rejected successfully' });
@@ -190,47 +298,21 @@ router.put('/:id', (req, res) => {
     }
 });
 
-// GET /orders/:id/items - get items for a specific order
-// --- NEW REPLACEMENT CODE ---
-// GET /orders/:id/items - updated to include status and rejection reason
-router.get('/:id/items', (req, res) => {
-    const orderID = req.params.id;
-    const query = `
-        SELECT oi.ItemID, oi.QtyRequested, oi.QtyApproved,
-               p.ProductName, p.Unit, p.Price,
-               o.Status, o.RejectionReason 
-        FROM order_items oi
-        JOIN products p ON oi.ProductID = p.ProductID
-        JOIN orders o ON oi.OrderID = o.OrderID
-        WHERE oi.OrderID = ?
-    `;
-    db.query(query, [orderID], (err, results) => {
-        if (err) return res.status(500).json({ message: 'Database error', error: err });
-        res.status(200).json({ message: 'Order items fetched successfully', items: results });
-    });
-});
-
-
-// POST /orders/:id/next-stage
+// POST /orders/:id/next-stage - advance order to next stage
+// Also handles driver assignment when driver_id is provided in body
 router.post('/:id/next-stage', (req, res) => {
     const orderID = req.params.id;
+    const { driver_id, vehicle_type } = req.body || {};
 
-    // 1. Check if ID is actually there
-    if (!orderID || orderID === 'undefined' || orderID === '[object Object]') {
-        console.error(">>> ERROR: Received invalid OrderID:", orderID);
-        return res.status(400).json({ message: 'Invalid Order ID received' });
+    if (!orderID || orderID === 'undefined') {
+        return res.status(400).json({ message: 'Invalid Order ID' });
     }
 
-    console.log(`>>> Attempting to advance OrderID: ${orderID}`);
-
-    // 2. Fetch Current Status
     db.query('SELECT CurrentStage, Status FROM orders WHERE OrderID = ?', [orderID], (err, results) => {
         if (err) return res.status(500).json({ message: 'DB Fetch Error', error: err });
-        if (results.length === 0) return res.status(404).json({ message: 'Order not found in database' });
+        if (results.length === 0) return res.status(404).json({ message: 'Order not found' });
 
-        // Logic: Increment stage, and if it's the first time clicking "Start Packing", 
-        // move it from 'approved' (Stage 2) to 'processing' (Stage 3)
-        let nextStage = (results[0].CurrentStage || 2) + 1; 
+        let nextStage = (results[0].CurrentStage || 2) + 1;
         let newStatus = 'processing';
 
         if (nextStage >= 7) {
@@ -238,25 +320,83 @@ router.post('/:id/next-stage', (req, res) => {
             newStatus = 'delivered';
         }
 
-        // 3. The Final Update
-        const updateSql = 'UPDATE orders SET CurrentStage = ?, Status = ? WHERE OrderID = ?';
-        db.query(updateSql, [nextStage, newStatus, orderID], (updateErr, result) => {
-            if (updateErr) {
-                console.error(">>> DB Update Failed:", updateErr);
-                return res.status(500).json({ message: 'Update failed', error: updateErr });
-            }
+        // If driver_id provided — insert into deliveries table and advance to stage 4
+        if (driver_id) {
+            nextStage = 4;
+            newStatus = 'assigned';
 
-            console.log(`>>> SUCCESS: Order ${orderID} is now Stage ${nextStage} (${newStatus})`);
-            res.status(200).json({ 
-                message: 'Stage Advanced', 
-                newStage: nextStage, 
-                newStatus: newStatus 
+            // Update order stage and status
+            db.query('UPDATE orders SET CurrentStage = ?, Status = ? WHERE OrderID = ?',
+                [nextStage, newStatus, orderID], (updateErr) => {
+                    if (updateErr) return res.status(500).json({ message: 'Order update failed', error: updateErr });
+
+                    // Check if delivery record already exists for this order
+                    db.query('SELECT DeliveryID FROM deliveries WHERE OrderID = ?', [orderID], (err2, existing) => {
+                        if (err2) return res.status(500).json({ message: 'DB error', error: err2 });
+
+                        if (existing.length > 0) {
+                            // Update existing delivery record
+                            db.query('UPDATE deliveries SET DriverID = ?, Status = ?, AssignedAt = NOW() WHERE OrderID = ?',
+                                [driver_id, 'assigned', orderID], (err3) => {
+                                    if (err3) return res.status(500).json({ message: 'Delivery update failed', error: err3 });
+                                    db.query('UPDATE users SET CurrentStatus = "BUSY" WHERE UserID = ? AND Role = "driver"', [driver_id], () => {});
+                                    res.status(200).json({ message: 'Driver Assigned', newStage: nextStage, newStatus });
+                                });
+                        } else {
+                            // Insert new delivery record (HubID defaults to 1)
+                            db.query('INSERT INTO deliveries (OrderID, DriverID, HubID, Status, AssignedAt) VALUES (?, ?, 1, "assigned", NOW())',
+                                [orderID, driver_id], (err3) => {
+                                    if (err3) return res.status(500).json({ message: 'Delivery insert failed', error: err3.message || err3 });
+                                    db.query('UPDATE users SET CurrentStatus = "BUSY" WHERE UserID = ? AND Role = "driver"', [driver_id], () => {});
+                                    res.status(200).json({ message: 'Driver Assigned', newStage: nextStage, newStatus });
+                                });
+                        }
+                    });
+                });
+        } else {
+            // US-14: New 7-stage pipeline status mapping
+            // Stage 1: pending, Stage 2: approved, Stage 3: packing,
+            // Stage 4: in_3pl_transit, Stage 5: ready_to_ship,
+            // Stage 6: out_for_delivery, Stage 7: delivered
+            const stageStatusMap = {
+                1: 'pending',
+                2: 'approved',
+                3: 'packing',
+                4: 'in_3pl_transit',
+                5: 'ready_to_ship',
+                6: 'out_for_delivery',
+                7: 'delivered'
+            };
+            newStatus = stageStatusMap[nextStage] || 'processing';
+
+            const updateSql = 'UPDATE orders SET CurrentStage = ?, Status = ? WHERE OrderID = ?';
+            db.query(updateSql, [nextStage, newStatus, orderID], (updateErr) => {
+                if (updateErr) return res.status(500).json({ message: 'Update failed', error: updateErr });
+
+                // US-16: Auto-update driver status on delivery completion
+                if (newStatus === 'delivered') {
+                    db.query('UPDATE deliveries SET Status = "delivered", DeliveredAt = NOW() WHERE OrderID = ?',
+                        [orderID], () => {});
+                    // Auto-set driver back to AVAILABLE (endDelivery)
+                    db.query(`UPDATE users u
+                        JOIN deliveries d ON d.DriverID = u.UserID
+                        SET u.CurrentStatus = 'AVAILABLE'
+                        WHERE d.OrderID = ? AND u.Role = 'driver'`, [orderID], () => {});
+                }
+                // US-16: Auto-set driver to BUSY on out_for_delivery (startDelivery)
+                if (newStatus === 'out_for_delivery') {
+                    db.query(`UPDATE users u
+                        JOIN deliveries d ON d.DriverID = u.UserID
+                        SET u.CurrentStatus = 'BUSY'
+                        WHERE d.OrderID = ? AND u.Role = 'driver'`, [orderID], () => {});
+                    db.query('UPDATE deliveries SET Status = "in_transit" WHERE OrderID = ?',
+                        [orderID], () => {});
+                }
+
+                res.status(200).json({ message: 'Stage Advanced', newStage: nextStage, newStatus });
             });
-        });
+        }
     });
 });
-
-const authMiddleware = require('../middleware/authMiddleware');
-router.post('/', authMiddleware, placeOrder);
 
 module.exports = router;

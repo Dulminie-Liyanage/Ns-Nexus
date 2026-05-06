@@ -1,14 +1,16 @@
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config(); //logic happens here to load environment variables from .env file
+require('dotenv').config();
 const db = require('./config/db');
 
 const authRoutes = require('./routes/auth');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
+const userRoutes = require('./routes/users');
+const driverRoutes = require('./routes/drivers');
+const shipmentRoutes = require('./routes/shipments');
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
@@ -19,6 +21,9 @@ app.get('/', (req, res) => {
 app.use('/auth', authRoutes);
 app.use('/products', productRoutes);
 app.use('/orders', orderRoutes);
+app.use('/users', userRoutes);
+app.use('/drivers', driverRoutes);
+app.use('/shipments', shipmentRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

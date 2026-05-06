@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'wm_dashboard_tab.dart';
 import 'inventory_tab.dart';
 import 'warehouse_orders_screen.dart';
+import 'audit_trail_screen.dart';
+import 'daily_report_list_screen.dart';
 import 'login_screen.dart';
 import '../services/auth_service.dart';
 
@@ -14,28 +16,38 @@ class WarehouseScreen extends StatefulWidget {
 
 class _WarehouseScreenState extends State<WarehouseScreen> {
   int _currentIndex = 0;
-  String? _activeFilter; // Stores 'pending' or 'urgent' from the dashboard
+  String? _activeFilter;
+
+  Widget _buildBody() {
+    switch (_currentIndex) {
+      case 0:
+        return WMDashboardTab(
+          onTabChange: (index, {filter}) {
+            setState(() {
+              _currentIndex = index;
+              _activeFilter = filter;
+            });
+          },
+        );
+      case 1:
+        return const InventoryTab();
+      case 2:
+        // Use ValueKey so widget rebuilds when filter changes
+        return WarehouseOrdersScreen(
+          key: ValueKey(_activeFilter ?? 'all'),
+          initialFilter: _activeFilter,
+        );
+      case 3:
+        return const AuditTrailScreen();
+      case 4:
+        return const DailyReportListScreen();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> _tabs = [
-      // Index 0: Overview
-      WMDashboardTab(
-        onTabChange: (index, {filter}) {
-          setState(() {
-            _currentIndex = index;
-            _activeFilter = filter;
-          });
-        },
-      ),
-      // Index 1: Products
-      const InventoryTab(),
-      // Index 2: Orders
-      WarehouseOrdersScreen(initialFilter: _activeFilter),
-      // Index 3: Profile
-      const Center(child: Text("Profile Page")),
-    ];
-
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
@@ -60,23 +72,28 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
               if (!mounted) return;
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
               );
             },
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: IndexedStack(index: _currentIndex, children: _tabs),
+      body: _buildBody(),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() {
           _currentIndex = index;
-          _activeFilter = null; // Clear filter if clicking tab manually
+          if (index != 2) _activeFilter = null;
         }),
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFFD4A017), // Nestle Gold
+        selectedItemColor: const Color(0xFFD4A017),
         unselectedItemColor: Colors.grey.shade400,
+        selectedLabelStyle: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelStyle: const TextStyle(fontSize: 10),
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.grid_view_rounded),
@@ -91,8 +108,12 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
             label: 'Orders',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline_rounded),
-            label: 'Profile',
+            icon: Icon(Icons.timeline_outlined),
+            label: 'Audit',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.bar_chart_outlined),
+            label: 'Report',
           ),
         ],
       ),

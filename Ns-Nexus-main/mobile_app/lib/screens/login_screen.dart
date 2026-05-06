@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import 'retailer_screen.dart';
 import 'warehouse_screen.dart';
+import 'admin_user_management_screen.dart';
+import 'driver_status_screen.dart';
+import 'delivery_schedule_screen.dart';
+import 'driver_profile_screen.dart';
+import 'shipment_management_screen.dart';
+import 'audit_trail_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
-
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
@@ -14,19 +20,16 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
-
   bool _isLocked = false;
   bool _isLoading = false;
   String? _errorMessage;
 
   Future<void> _handleLogin() async {
     if (_isLocked) return;
-
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
-
     try {
       final email = _emailController.text.trim();
       final password = _passwordController.text.trim();
@@ -38,9 +41,7 @@ class _LoginScreenState extends State<LoginScreen> {
         });
         return;
       }
-
-      final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+');
-      if (!emailRegex.hasMatch(email)) {
+      if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(email)) {
         setState(() {
           _errorMessage = 'Please enter a valid email address';
           _isLoading = false;
@@ -49,58 +50,72 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       final response = await _authService.login(email, password);
-
       if (!mounted) return;
 
       final user = response['user'];
-      final role = user['role'];
+      final role = (user['role'] ?? '').toString().toLowerCase();
+
+      // Save extra session data to SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('userName', user['name']?.toString() ?? '');
+      await prefs.setString('userEmail', email);
+
+      if (!mounted) return;
 
       if (role == 'retailer') {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const RetailerScreen()),
+          MaterialPageRoute(builder: (_) => const RetailerScreen()),
         );
-      } else if (role == 'warehouse_manager') {
+      } else if (role == 'warehouse_manager' || role == 'wm') {
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const WarehouseScreen()),
+          MaterialPageRoute(builder: (_) => const WarehouseScreen()),
+        );
+      } else if (role == 'admin') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const AdminUserManagementScreen()),
+        );
+      } else if (role == 'driver') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const DriverHomeScreen()),
+        );
+      } else if (role == '3pl_manager' ||
+          role == 'logistics_manager' ||
+          role == 'lm') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LogisticsHomeScreen()),
         );
       } else {
-        setState(() {
-          _errorMessage = 'Unknown role: $role';
-        });
+        setState(
+          () => _errorMessage = 'Login failed — unrecognised role: "$role"',
+        );
       }
     } on AuthException catch (e) {
       if (!mounted) return;
       setState(() {
         _errorMessage = e.message;
-        if (e.statusCode == 403) {
-          _isLocked = true;
-        }
+        if (e.statusCode == 403) _isLocked = true;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _errorMessage = e.toString().replaceFirst('Exception: ', '');
-      });
+      setState(
+        () => _errorMessage = e.toString().replaceFirst('Exception: ', ''),
+      );
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Brand Colors
     const Color brandBlue = Color(0xFF0056B3);
     const Color bgColor = Color(0xFFF5F7FA);
     const Color textColor = Color(0xFF1E293B);
     const Color subtleText = Color(0xFF64748B);
-
-    // Tinted light blue for the input fields for better contrast
     const Color inputFillColor = Color(0xFFE6EFFF);
 
     return Scaffold(
@@ -113,18 +128,14 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 1. Logo Section (Using Actual Image Asset)
                 Center(
                   child: Image.asset(
                     'assets/images/nestle_logo.png',
-                    height:
-                        80, // Adjust height if needed to match mockup perfectly
+                    height: 80,
                     fit: BoxFit.contain,
                   ),
                 ),
                 const SizedBox(height: 48),
-
-                // 2. Title
                 const Text(
                   'Sign In to Your Account',
                   style: TextStyle(
@@ -135,8 +146,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 32),
-
-                // 3. Email Input
                 const Text(
                   'Email',
                   style: TextStyle(
@@ -164,8 +173,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
-
-                // 4. Password Input
                 const Text(
                   'Password',
                   style: TextStyle(
@@ -193,8 +200,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // 5. Remember Me / Forgot Password Row
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -205,7 +210,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           height: 24,
                           child: Checkbox(
                             value: false,
-                            onChanged: (value) {},
+                            onChanged: (v) {},
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(4),
                             ),
@@ -231,8 +236,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                 ),
                 const SizedBox(height: 24),
-
-                // 6. Error Message
                 if (_errorMessage != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 16),
@@ -245,8 +248,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       textAlign: TextAlign.center,
                     ),
                   ),
-
-                // 7. Sign In Button
                 ElevatedButton(
                   onPressed: (_isLoading || _isLocked) ? null : _handleLogin,
                   style: ElevatedButton.styleFrom(
@@ -280,6 +281,104 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Driver home — 3 tabs: Status, Schedule, Profile ───────────────────────────
+class DriverHomeScreen extends StatefulWidget {
+  const DriverHomeScreen({super.key});
+  @override
+  State<DriverHomeScreen> createState() => _DriverHomeScreenState();
+}
+
+class _DriverHomeScreenState extends State<DriverHomeScreen> {
+  int _currentIndex = 0;
+  // Key forces DriverStatusScreen to rebuild when switching back to status tab
+  Key _statusKey = UniqueKey();
+
+  void _onTabTap(int i) {
+    // Rebuild status screen every time driver taps back to it
+    // so it fetches fresh status from DB immediately
+    if (i == 0) {
+      setState(() {
+        _currentIndex = 0;
+        _statusKey = UniqueKey();
+      });
+    } else {
+      setState(() => _currentIndex = i);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tabs = [
+      DriverStatusScreen(key: _statusKey),
+      const DeliveryScheduleScreen(),
+      const DriverProfileScreen(),
+    ];
+    return Scaffold(
+      body: IndexedStack(index: _currentIndex, children: tabs),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: _onTabTap,
+        selectedItemColor: const Color(0xFF0056B3),
+        unselectedItemColor: Colors.grey.shade400,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.toggle_on_outlined),
+            label: 'My Status',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.route_outlined),
+            label: 'Schedule',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            label: 'Profile',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Logistics manager home — 2 tabs: Shipments + Order Tracking ───────────────
+class LogisticsHomeScreen extends StatefulWidget {
+  const LogisticsHomeScreen({super.key});
+  @override
+  State<LogisticsHomeScreen> createState() => _LogisticsHomeScreenState();
+}
+
+class _LogisticsHomeScreenState extends State<LogisticsHomeScreen> {
+  int _currentIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final tabs = [
+      const ShipmentManagementScreen(),
+      const AuditTrailScreen(onlyShipped: true), // 3PL sees stage 4+ only
+    ];
+    return Scaffold(
+      body: IndexedStack(index: _currentIndex, children: tabs),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (i) => setState(() => _currentIndex = i),
+        selectedItemColor: const Color(0xFF0056B3),
+        unselectedItemColor: Colors.grey.shade400,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.inventory_2_outlined),
+            label: 'Shipments',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.track_changes_outlined),
+            label: 'Order Tracking',
+          ),
+        ],
       ),
     );
   }

@@ -9,12 +9,9 @@ class RetailerScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Brand Colors
     const Color bgColor = Color(0xFFF5F7FA);
     const Color textColor = Color(0xFF1E293B);
     const Color subtleText = Color(0xFF64748B);
-
-    // Card Colors from Mockup
     const Color purpleCard = Color(0xFF9F7AEA);
     const Color yellowCard = Color(0xFFFCD34D);
     const Color tealCard = Color(0xFF4ADE80);
@@ -24,12 +21,12 @@ class RetailerScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        toolbarHeight: 100, // 🚨 Increased height for the bar
+        toolbarHeight: 100,
         title: Padding(
-          padding: const EdgeInsets.only(top: 10.0), // 🚨 Added padding
+          padding: const EdgeInsets.only(top: 10.0),
           child: Image.asset(
             'assets/images/nestle_logo.png',
-            height: 70, // 🚨 Increased logo height (was 40)
+            height: 70,
             fit: BoxFit.contain,
           ),
         ),
@@ -107,7 +104,7 @@ class RetailerScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
 
-            // 1. Standard Order Card (Purple) - Active
+            // 1. Standard Order — navigates to OrderScreen (isUrgent = false)
             _buildOrderCard(
               context: context,
               color: purpleCard,
@@ -116,61 +113,90 @@ class RetailerScreen extends StatelessWidget {
               subtitle: 'Place a regular order with 48-hour delivery window',
               onTap: () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (ctx) => const OrderScreen()),
+                MaterialPageRoute(
+                  builder: (ctx) => const OrderScreen(isUrgent: false),
+                ),
               ),
             ),
             const SizedBox(height: 16),
 
-            // 2. Urgent Order Card (Yellow) - Placeholder
+            // 2. Urgent Order — navigates to OrderScreen with isUrgent = true
             _buildOrderCard(
               context: context,
               color: yellowCard,
-              icon: Icons.access_time_filled,
+              icon: Icons.bolt_rounded,
               title: 'Create Urgent Order',
               subtitle: 'Priority-based urgent requests',
-              textColor: textColor, // Yellow needs dark text for contrast
+              textColor: textColor,
               iconBgColor: Colors.black.withOpacity(0.05),
-              onTap: () {
-                // TODO: Link to Urgent Order Screen in Sprint 2
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Urgent Orders coming in Sprint 2!'),
-                  ),
-                );
-              },
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (ctx) => const OrderScreen(isUrgent: true),
+                ),
+              ),
             ),
             const SizedBox(height: 16),
 
-            // 3. Quick Order Card (Teal) - Placeholder
+            // 3. Quick Order — opens Order History so retailer can reorder
             _buildOrderCard(
               context: context,
               color: tealCard,
               icon: Icons.inventory,
               title: 'Quick Order',
               subtitle: 'Reorder from your past orders instantly',
-              textColor: textColor, // Teal needs dark text for contrast
+              textColor: textColor,
               iconBgColor: Colors.black.withOpacity(0.05),
-              onTap: () {
-                // TODO: Link to Quick Order Screen in Sprint 2
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Quick Orders coming in Sprint 2!'),
+              onTap: () => showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                );
-              },
+                  title: const Row(
+                    children: [
+                      Icon(
+                        Icons.rocket_launch_outlined,
+                        color: Color(0xFF4ADE80),
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        'Coming in Sprint 3',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  content: const Text(
+                    'Quick Order will let you instantly reorder from your past orders with one tap. This feature is being developed in Sprint 3.',
+                    style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+                  ),
+                  actions: [
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF4ADE80),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      child: const Text('Got it'),
+                    ),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 24),
 
-            // Order History Section (Expandable style)
+            // Order History
             InkWell(
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (ctx) => const OrderHistoryScreen(),
-                  ),
-                );
-              },
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (ctx) => const OrderHistoryScreen()),
+              ),
               borderRadius: BorderRadius.circular(16),
               child: Container(
                 padding: const EdgeInsets.all(20),
@@ -208,7 +234,7 @@ class RetailerScreen extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 32), // Bottom padding
+            const SizedBox(height: 32),
           ],
         ),
       ),
@@ -254,7 +280,6 @@ class RetailerScreen extends StatelessWidget {
     );
   }
 
-  // Helper method to build the colored action cards cleanly
   Widget _buildOrderCard({
     required BuildContext context,
     required Color color,

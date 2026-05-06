@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/order_service.dart';
 
 class OrderHistoryScreen extends StatefulWidget {
@@ -13,6 +14,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   List<dynamic> _orders = [];
   bool _isLoading = true;
   String? _error;
+  String _currentUserId = '';
 
   @override
   void initState() {
@@ -21,23 +23,56 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   }
 
   Future<void> _loadHistory() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
     try {
+      // Step 1 — get userId from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      _currentUserId = prefs.getString('userId') ?? '';
+
+      // Step 2 — guard: if no userId something went wrong at login
+      if (_currentUserId.isEmpty || _currentUserId == '0') {
+        setState(() {
+          _error = 'Session error — please log out and log in again.';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Step 3 — fetch from /orders/retailer/:userId
       final data = await _orderService.fetchOrderHistory();
       if (!mounted) return;
+
+      // Step 4 — client-side safety filter
+      // The backend already filters by RetailerID, but we double-check here
+      // in case the session somehow has the wrong userId stored
+      final filtered = data.where((order) {
+        final orderRetailerId =
+            (order['RetailerID'] ?? order['retailer_id'] ?? order['retailerId'])
+                ?.toString() ??
+            '';
+
+        // If backend returns RetailerID, strictly match it
+        // If not returned (older backend), trust the backend filter
+        if (orderRetailerId.isEmpty) return true;
+        return orderRetailerId == _currentUserId;
+      }).toList();
+
       setState(() {
-        _orders = data;
+        _orders = filtered;
         _isLoading = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString();
+        _error = e.toString().replaceFirst('Exception: ', '');
         _isLoading = false;
       });
     }
   }
 
-  // 🚨 FIXED: Now accepts status and reason directly from the card
   Future<void> _showItemsDialog(
     dynamic orderId,
     String status,
@@ -48,33 +83,35 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
       barrierDismissible: false,
       builder: (ctx) => const Center(child: CircularProgressIndicator()),
     );
-
     try {
       final items = await _orderService.fetchOrderItems(orderId);
       if (!mounted) return;
-      Navigator.pop(context); // close loader
+      Navigator.pop(context);
 
       showDialog(
         context: context,
         builder: (ctx) {
-          // Clean up the status and reason to ensure safe rendering
           final String safeStatus = status.toLowerCase();
           final String safeReason = (reason.isNotEmpty && reason != 'null')
               ? reason
               : 'No reason provided';
 
           return AlertDialog(
-            title: const Text('Order Items'),
+            title: Text(
+              'Order #$orderId Items',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
             content: SizedBox(
               width: double.maxFinite,
               child: Column(
-                mainAxisSize:
-                    MainAxisSize.min, // Important to prevent empty space
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // 1. SCROLLABLE LIST OF ITEMS
                   Flexible(
                     child: items.isEmpty
-                        ? const Text('No items inside this order.')
+                        ? const Text('No items found for this order.')
                         : ListView.builder(
                             shrinkWrap: true,
                             itemCount: items.length,
@@ -89,7 +126,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                               final approvedRaw = item['QtyApproved'] ?? qtyRaw;
                               final priceRaw =
                                   item['UnitPrice'] ?? item['Price'] ?? 0.0;
-
                               final qReq = int.tryParse(qtyRaw.toString()) ?? 0;
                               final qApprv =
                                   int.tryParse(approvedRaw.toString()) ?? qReq;
@@ -101,7 +137,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
                               return Container(
                                 color: isModified
-                                    ? Colors.orange.withOpacity(0.2)
+                                    ? Colors.orange.withOpacity(0.1)
                                     : null,
                                 child: ListTile(
                                   title: Text(
@@ -109,14 +145,17 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                                     style: TextStyle(
                                       color: isModified
                                           ? Colors.deepOrange
-                                          : Colors.black,
+                                          : Colors.black87,
                                       fontWeight: isModified
                                           ? FontWeight.bold
                                           : FontWeight.normal,
+                                      fontSize: 14,
                                     ),
                                   ),
                                   subtitle: Text(
-                                    'Requested: $qReq   |   Approved: $qApprv\nUnit Price: LKR ${p.toStringAsFixed(2)}  —  Line Total: LKR ${lineTotal.toStringAsFixed(2)}',
+                                    'Requested: $qReq  |  Approved: $qApprv\n'
+                                    'Unit: LKR ${p.toStringAsFixed(2)}  —  Total: LKR ${lineTotal.toStringAsFixed(2)}',
+                                    style: const TextStyle(fontSize: 12),
                                   ),
                                   isThreeLine: true,
                                 ),
@@ -124,10 +163,8 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                             },
                           ),
                   ),
-
-                  // 2. THE RED BOX AT THE BOTTOM (ONLY IF REJECTED)
                   if (safeStatus == 'rejected') ...[
-                    const Divider(height: 30, thickness: 1),
+                    const Divider(height: 24),
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
@@ -140,7 +177,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            "REJECTION REASON",
+                            'REJECTION REASON',
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               color: Colors.red,
@@ -149,7 +186,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            safeReason, // Displaying the passed reason here
+                            safeReason,
                             style: const TextStyle(
                               color: Colors.black87,
                               fontSize: 14,
@@ -181,23 +218,34 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   }
 
   String _getStageName(int stage) {
-    switch (stage) {
-      case 1:
-        return 'Pending';
-      case 2:
-        return 'Approved';
-      case 3:
-        return 'Packing';
-      case 4:
-        return 'Shipped';
-      case 5:
-        return 'At Hub';
-      case 6:
-        return 'Out for Delivery';
-      case 7:
-        return 'Delivered';
+    const stages = {
+      1: 'Pending',
+      2: 'Approved / Rejected',
+      3: 'Packing',
+      4: 'In 3PL Transit',
+      5: 'Ready to Ship',
+      6: 'Out for Delivery',
+      7: 'Delivered',
+    };
+    return stages[stage] ?? 'Pending';
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'approved':
+      case 'partially_approved':
+        return Colors.green;
+      case 'rejected':
+        return Colors.red;
+      case 'pending':
+        return Colors.orange;
+      case 'shipped':
+      case 'processing':
+        return Colors.blue;
+      case 'delivered':
+        return Colors.green.shade700;
       default:
-        return 'Pending';
+        return Colors.grey;
     }
   }
 
@@ -212,22 +260,24 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
             return Expanded(
               child: Container(
                 margin: EdgeInsets.only(right: stage < 7 ? 4 : 0),
-                height: 8,
+                height: 7,
                 decoration: BoxDecoration(
-                  color: isActive ? Colors.green : Colors.grey.shade300,
+                  color: isActive
+                      ? const Color(0xFF0056B3)
+                      : Colors.grey.shade200,
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
             );
           }),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
-          'Stage $currentStage of 7: ${_getStageName(currentStage)}',
+          'Stage $currentStage / 7 — ${_getStageName(currentStage)}',
           style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.blueGrey,
-            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF0056B3),
+            fontSize: 12,
           ),
         ),
       ],
@@ -237,23 +287,80 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Order History')),
+      backgroundColor: const Color(0xFFF5F7FA),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        title: const Text(
+          'Order History',
+          style: TextStyle(
+            color: Color(0xFF1E293B),
+            fontWeight: FontWeight.w700,
+            fontSize: 20,
+          ),
+        ),
+        iconTheme: const IconThemeData(color: Color(0xFF1E293B)),
+        actions: [
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadHistory),
+        ],
+      ),
       body: _buildBody(),
     );
   }
 
   Widget _buildBody() {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
+
     if (_error != null) {
       return Center(
-        child: Text(_error!, style: const TextStyle(color: Colors.red)),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, size: 48, color: Colors.red.shade300),
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red, fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _loadHistory,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
       );
     }
+
     if (_orders.isEmpty) {
-      return const Center(
-        child: Text(
-          'No order history found',
-          style: TextStyle(color: Colors.grey, fontSize: 18),
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.receipt_long_outlined,
+              size: 56,
+              color: Colors.grey.shade300,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'No orders yet',
+              style: TextStyle(
+                color: Colors.grey.shade400,
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Your order history will appear here',
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 13),
+            ),
+          ],
         ),
       );
     }
@@ -261,73 +368,167 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     return RefreshIndicator(
       onRefresh: _loadHistory,
       child: ListView.builder(
+        padding: const EdgeInsets.all(16),
         itemCount: _orders.length,
         itemBuilder: (context, index) {
           final order = _orders[index];
           final orderId = order['OrderID'] ?? order['id'] ?? order['_id'];
+          final status = order['Status']?.toString() ?? 'pending';
+          final statusColor = _getStatusColor(status);
 
-          return Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          return Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.grey.shade200),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
             child: Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Order ID: #$orderId',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
+                  // Header
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Status: ${order['Status'] ?? 'Pending'}',
+                        'Order #$orderId',
                         style: const TextStyle(
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w700,
                           fontSize: 16,
+                          color: Color(0xFF1E293B),
                         ),
                       ),
-                      Text(
-                        'LKR ${order['TotalPrice']?.toString() ?? '0.00'}',
-                        style: const TextStyle(
-                          color: Colors.blue,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          status.replaceAll('_', ' ').toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: statusColor,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Order Date: ${(order['CreatedAt'] ?? order['OrderDate'] ?? order['orderDate'] ?? 'N/A').toString().split('T')[0]}',
+                  const SizedBox(height: 10),
+
+                  // Details
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Date: ${(order['CreatedAt'] ?? 'N/A').toString().split('T')[0]}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                          Text(
+                            'Delivery: ${(order['DeliveryDate'] ?? 'N/A').toString().split('T')[0]}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                          Text(
+                            'Weight: ${order['TotalWeight']?.toString() ?? '0'} kg',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        'LKR ${order['TotalPrice']?.toString() ?? '0.00'}',
+                        style: const TextStyle(
+                          color: Color(0xFF0056B3),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ],
                   ),
-                  Text(
-                    'Delivery Date: ${(order['DeliveryDate'] ?? order['deliveryDate'] ?? 'N/A').toString().split('T')[0]}',
-                  ),
-                  Text(
-                    'Total Weight: ${order['TotalWeight']?.toString() ?? '0.00'} kg',
-                  ),
-                  const SizedBox(height: 16),
+
+                  // Urgent badge
+                  if (order['IsUrgent'] == 1) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.bolt_rounded,
+                            size: 12,
+                            color: Colors.red.shade700,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Urgent Order',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.red.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+
+                  // Progress bar
                   _buildProgressBar(
                     int.tryParse(order['CurrentStage']?.toString() ?? '1') ?? 1,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
+
+                  // View items button
                   SizedBox(
                     width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () {
-                        // 🚨 FIXED: Extracting data from the order card to pass to dialog
-                        final String status = order['Status']?.toString() ?? '';
-                        final String reason =
-                            order['RejectionReason']?.toString() ?? '';
-                        _showItemsDialog(orderId, status, reason);
-                      },
-                      child: const Text('View Items'),
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showItemsDialog(
+                        orderId,
+                        order['Status']?.toString() ?? '',
+                        order['RejectionReason']?.toString() ?? '',
+                      ),
+                      icon: const Icon(Icons.list_alt_outlined, size: 16),
+                      label: const Text('View Items'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF0056B3),
+                        side: const BorderSide(color: Color(0xFF0056B3)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
                     ),
                   ),
                 ],
