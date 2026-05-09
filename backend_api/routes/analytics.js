@@ -47,7 +47,7 @@ router.get('/dashboard', async (req, res) => {
 
     // Orders per stage
     const stageRows = await q(
-      `SELECT CurrentStage, COUNT(*) AS count FROM orders o WHERE ${where} GROUP BY CurrentStage ORDER BY CurrentStage`, params);
+      `SELECT CurrentStage AS stage, COUNT(*) AS count FROM orders o WHERE ${where} GROUP BY CurrentStage ORDER BY CurrentStage`, params);
 
     // Recent 7 days order volume
     const trendRows = await q(

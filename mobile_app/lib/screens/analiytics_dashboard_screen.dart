@@ -405,11 +405,46 @@ class _AnalyticsDashboardScreenState extends State<AnalyticsDashboardScreen> {
   Widget _trendCard() {
     final trend = (_data!['weeklyTrend'] as List?) ?? [];
     if (trend.isEmpty) return const SizedBox.shrink();
+
     final spots = trend
         .asMap()
         .entries
         .map((e) => FlSpot(e.key.toDouble(), _n(e.value['count'])))
         .toList();
+
+    final counts = spots.map((s) => s.y).toList();
+    final maxY = counts.reduce((a, b) => a > b ? a : b);
+    final effectiveMaxY = maxY <= 0 ? 5.0 : maxY + (maxY * 0.25).clamp(1, 20);
+    final total = counts.fold(0.0, (a, b) => a + b).toInt();
+
+    // Build day labels — handle both "2025-05-03" and "2025-05-03T00:00:00.000Z"
+    final dayLabels = trend.map((t) {
+      final raw = t['day']?.toString() ?? '';
+      // Extract just the date part before any T
+      final datePart = raw.split('T').first;
+      // Show as "May 3" format
+      try {
+        final d = DateTime.parse(datePart);
+        const months = [
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec',
+        ];
+        return '${months[d.month - 1]} ${d.day}';
+      } catch (_) {
+        return datePart.length >= 10 ? datePart.substring(5) : datePart;
+      }
+    }).toList();
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -420,69 +455,138 @@ class _AnalyticsDashboardScreenState extends State<AnalyticsDashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Order Volume — Last 7 Days',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 15,
-              color: Color(0xFF1E293B),
-            ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            height: 130,
-            child: LineChart(
-              LineChartData(
-                gridData: FlGridData(
-                  getDrawingHorizontalLine: (_) =>
-                      FlLine(color: Colors.grey.shade100, strokeWidth: 1),
-                  drawVerticalLine: false,
+          Row(
+            children: [
+              const Text(
+                'Order Volume — Last 7 Days',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  color: Color(0xFF1E293B),
                 ),
-                titlesData: FlTitlesData(
-                  leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 22,
-                      getTitlesWidget: (v, _) {
-                        final idx = v.toInt();
-                        if (idx < 0 || idx >= trend.length)
-                          return const SizedBox.shrink();
-                        final day = trend[idx]['day']?.toString() ?? '';
-                        return Text(
-                          day.length >= 10 ? day.substring(5) : day,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Color(0xFF94A3B8),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                borderData: FlBorderData(show: false),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: spots,
-                    isCurved: true,
-                    color: const Color(0xFF0056B3),
-                    barWidth: 2.5,
-                    dotData: const FlDotData(show: true),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      color: const Color(0xFF0056B3).withValues(alpha: 0.07),
-                    ),
-                  ),
-                ],
               ),
+              const Spacer(),
+              Text(
+                'Total: $total orders',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 120,
+            child: maxY == 0
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.show_chart,
+                          size: 36,
+                          color: Colors.grey.shade300,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'No orders in the last 7 days',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : LineChart(
+                    LineChartData(
+                      minY: 0,
+                      maxY: effectiveMaxY,
+                      gridData: FlGridData(
+                        drawVerticalLine: false,
+                        getDrawingHorizontalLine: (_) =>
+                            FlLine(color: Colors.grey.shade100, strokeWidth: 1),
+                      ),
+                      // ALL axis titles disabled — we draw labels manually below
+                      titlesData: FlTitlesData(
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 24,
+                            getTitlesWidget: (v, _) {
+                              if (v == 0 || v == effectiveMaxY) {
+                                return Text(
+                                  '${v.toInt()}',
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    color: Color(0xFF94A3B8),
+                                  ),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            },
+                          ),
+                        ),
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        bottomTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                      ),
+                      borderData: FlBorderData(show: false),
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: spots,
+                          isCurved: true,
+                          color: const Color(0xFF0056B3),
+                          barWidth: 2.5,
+                          dotData: FlDotData(
+                            show: true,
+                            getDotPainter: (spot, _, __, ___) =>
+                                FlDotCirclePainter(
+                                  radius: 4,
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                  strokeColor: const Color(0xFF0056B3),
+                                ),
+                          ),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            gradient: LinearGradient(
+                              colors: [
+                                const Color(0xFF0056B3).withValues(alpha: 0.15),
+                                const Color(0xFF0056B3).withValues(alpha: 0.0),
+                              ],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+          // Manual day labels row — perfectly spaced, never overlaps
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.only(
+              left: 24,
+            ), // align with chart left axis
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: dayLabels
+                  .map(
+                    (d) => Text(
+                      d,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ),
+                  )
+                  .toList(),
             ),
           ),
         ],
@@ -491,9 +595,15 @@ class _AnalyticsDashboardScreenState extends State<AnalyticsDashboardScreen> {
   }
 
   Widget _stageCard() {
-    final stages = (_data!['stageDistribution'] as List?) ?? [];
-    if (stages.isEmpty) return const SizedBox.shrink();
-    final labels = {
+    // Try multiple possible key names from backend
+    final raw =
+        (_data!['stageDistribution'] as List?) ??
+        (_data!['stages'] as List?) ??
+        [];
+    // Always show the card — even with empty data show all 7 stages as 0
+
+    // Build a full 7-stage list — fill missing stages with 0
+    const stageLabels = {
       1: 'Pending',
       2: 'Approved',
       3: 'Packing',
@@ -511,9 +621,21 @@ class _AnalyticsDashboardScreenState extends State<AnalyticsDashboardScreen> {
       Colors.orange.shade400,
       Colors.green.shade600,
     ];
-    final maxVal = stages
-        .map((s) => _n(s['count']))
-        .reduce((a, b) => a > b ? a : b);
+
+    // Map stage number → count from API response
+    final stageMap = <int, double>{};
+    for (final s in raw) {
+      // Backend may return 'stage' or 'CurrentStage' as key
+      final stageKey = s['stage'] ?? s['CurrentStage'] ?? 0;
+      stageMap[_i(stageKey)] = _n(s['count']);
+    }
+
+    // Build all 7 bars even if some stages have 0 orders
+    final allStages = List.generate(7, (i) => i + 1);
+    final maxVal = stageMap.values.isEmpty
+        ? 1.0
+        : stageMap.values.reduce((a, b) => a > b ? a : b);
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -534,11 +656,26 @@ class _AnalyticsDashboardScreenState extends State<AnalyticsDashboardScreen> {
           ),
           const SizedBox(height: 16),
           SizedBox(
-            height: 150,
+            height: 160,
             child: BarChart(
               BarChartData(
                 alignment: BarChartAlignment.spaceAround,
-                maxY: maxVal + 2,
+                maxY: maxVal + (maxVal * 0.2).clamp(1, 10),
+                barTouchData: BarTouchData(
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipItem: (group, _, rod, __) {
+                      final stage = group.x + 1;
+                      return BarTooltipItem(
+                        '${stageLabels[stage]}${rod.toY.toInt()} orders',
+                        const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      );
+                    },
+                  ),
+                ),
                 titlesData: FlTitlesData(
                   topTitles: const AxisTitles(
                     sideTitles: SideTitles(showTitles: false),
@@ -546,20 +683,35 @@ class _AnalyticsDashboardScreenState extends State<AnalyticsDashboardScreen> {
                   rightTitles: const AxisTitles(
                     sideTitles: SideTitles(showTitles: false),
                   ),
-                  leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 24,
+                      getTitlesWidget: (v, _) => v % 1 == 0
+                          ? Text(
+                              '${v.toInt()}',
+                              style: const TextStyle(
+                                fontSize: 9,
+                                color: Color(0xFF94A3B8),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
                   ),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 22,
+                      reservedSize: 24,
                       getTitlesWidget: (v, _) {
                         final stage = v.toInt() + 1;
-                        return Text(
-                          labels[stage] ?? '',
-                          style: const TextStyle(
-                            fontSize: 9,
-                            color: Color(0xFF94A3B8),
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            stageLabels[stage] ?? '',
+                            style: const TextStyle(
+                              fontSize: 8,
+                              color: Color(0xFF94A3B8),
+                            ),
                           ),
                         );
                       },
@@ -567,20 +719,23 @@ class _AnalyticsDashboardScreenState extends State<AnalyticsDashboardScreen> {
                   ),
                 ),
                 borderData: FlBorderData(show: false),
-                gridData: const FlGridData(show: false),
-                barGroups: stages.asMap().entries.map((e) {
-                  final stage = _i(e.value['stage']);
-                  final count = _n(e.value['count']);
+                gridData: FlGridData(
+                  drawVerticalLine: false,
+                  getDrawingHorizontalLine: (_) =>
+                      FlLine(color: Colors.grey.shade100, strokeWidth: 1),
+                ),
+                barGroups: allStages.map((stage) {
+                  final count = stageMap[stage] ?? 0.0;
                   final ci = (stage - 1).clamp(0, colors.length - 1);
                   return BarChartGroupData(
                     x: stage - 1,
                     barRods: [
                       BarChartRodData(
                         toY: count,
-                        color: colors[ci],
-                        width: 26,
+                        color: count > 0 ? colors[ci] : Colors.grey.shade200,
+                        width: 22,
                         borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(6),
+                          top: Radius.circular(5),
                         ),
                       ),
                     ],
@@ -588,6 +743,37 @@ class _AnalyticsDashboardScreenState extends State<AnalyticsDashboardScreen> {
                 }).toList(),
               ),
             ),
+          ),
+          const SizedBox(height: 12),
+          // Legend row
+          Wrap(
+            spacing: 10,
+            runSpacing: 4,
+            children: allStages.map((stage) {
+              final ci = (stage - 1).clamp(0, colors.length - 1);
+              final count = stageMap[stage] ?? 0;
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: colors[ci],
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 3),
+                  Text(
+                    '${stageLabels[stage]}: ${count.toInt()}',
+                    style: const TextStyle(
+                      fontSize: 9,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              );
+            }).toList(),
           ),
         ],
       ),

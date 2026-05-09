@@ -5,17 +5,28 @@ import '../services/order_service.dart';
 
 class OrderScreen extends StatefulWidget {
   final bool isUrgent;
-
-  /// Pre-filled cart for quick reorder: Map of productId -> quantity
   final Map<String, int>? preFilledCart;
-
-  /// True when opened from reorder flow — hides urgent toggle & status badge
   final bool isReorder;
+
+  /// US-26: Preloaded items from smart template
+  final List<Map<String, dynamic>>? preloadedItems;
+  final String? templateName;
+
+  /// US-27: Offer discount percentage
+  final double offerDiscount;
+
+  /// US-27: Suggested products from combo
+  final List<dynamic>? suggestedProducts;
+
   const OrderScreen({
     super.key,
     this.isUrgent = false,
     this.preFilledCart,
     this.isReorder = false,
+    this.preloadedItems,
+    this.templateName,
+    this.offerDiscount = 0.0,
+    this.suggestedProducts,
   });
 
   @override

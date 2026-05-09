@@ -3,10 +3,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
 import '../services/analiytics_service.dart';
+import '../services/order_service.dart';
 import 'notification_screen.dart';
 import 'order_screen.dart';
 import 'order_history_screen.dart';
 import 'quick_order_screen.dart';
+import 'smart_reorder_screen.dart';
+import 'offers_screen.dart';
 
 class RetailerScreen extends StatefulWidget {
   const RetailerScreen({super.key});
@@ -30,17 +33,31 @@ class _RetailerScreenState extends State<RetailerScreen> {
   }
 
   void _loadPrioritySync() {
-    // Run after first frame so setState works
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         final prefs = await SharedPreferences.getInstance();
+        final userId = prefs.getString('userId') ?? '';
+
+        // First use cached value so UI shows instantly
         final strVal = prefs.getString('priorityStatus') ?? '';
         final intVal = prefs.getInt('priorityStatus') ?? 0;
-        if (mounted) {
-          setState(
-            () =>
-                _isPriority = strVal == '1' || strVal == 'true' || intVal == 1,
-          );
+        final cachedPriority = strVal == '1' || strVal == 'true' || intVal == 1;
+        if (mounted) setState(() => _isPriority = cachedPriority);
+
+        // Then fetch fresh from server in background
+        if (userId.isNotEmpty) {
+          try {
+            final fresh = await OrderService()
+                .checkPriorityStatus(userId)
+                .timeout(const Duration(seconds: 5));
+            debugPrint('Priority status fetched: $fresh for userId: $userId');
+            // Save updated value
+            await prefs.setString('priorityStatus', fresh ? '1' : '0');
+            if (mounted) setState(() => _isPriority = fresh);
+          } catch (e) {
+            debugPrint('Priority fetch error: $e');
+            // Keep cached value if server unreachable
+          }
         }
       } catch (_) {
         if (mounted) setState(() => _isPriority = false);
@@ -190,7 +207,7 @@ class _RetailerScreenState extends State<RetailerScreen> {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.02),
+                    color: Colors.black.withAlpha(5),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -236,7 +253,7 @@ class _RetailerScreenState extends State<RetailerScreen> {
                 title: 'Create Urgent Order',
                 subtitle: 'Priority account — bypass 48-hour rule',
                 textColor: textColor,
-                iconBgColor: Colors.black.withOpacity(0.05),
+                iconBgColor: Colors.black.withAlpha(12),
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -255,13 +272,50 @@ class _RetailerScreenState extends State<RetailerScreen> {
               title: 'Quick Order',
               subtitle: 'Instantly reorder from your last approved order',
               textColor: textColor,
-              iconBgColor: Colors.black.withOpacity(0.05),
+              iconBgColor: Colors.black.withAlpha(12),
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (ctx) => const QuickOrderScreen()),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
+
+            // 4. Smart Quick Order — US-26: templates for heavy retailers
+            if (_isPriority == true)
+              _buildOrderCard(
+                context: context,
+                color: const Color(0xFF7C3AED),
+                icon: Icons.auto_awesome_outlined,
+                title: 'Smart Quick Order',
+                subtitle:
+                    'Personalized templates based on your bulk order history',
+                textColor: textColor,
+                iconBgColor: Colors.black.withAlpha(13),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SmartReorderScreen()),
+                ),
+              ),
+            if (_isPriority == true) const SizedBox(height: 16),
+
+            // 5. Special Offers — US-27: personalized offers for heavy retailers
+            if (_isPriority == true)
+              _buildOrderCard(
+                context: context,
+                color: const Color(0xFFDC2626),
+                icon: Icons.local_offer_outlined,
+                title: 'Special Offers',
+                subtitle: 'Exclusive bulk deals and combo offers just for you',
+                textColor: textColor,
+                iconBgColor: Colors.black.withAlpha(13),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const OffersScreen()),
+                ),
+              ),
+            if (_isPriority == true) const SizedBox(height: 16),
+
+            const SizedBox(height: 8),
 
             // Order History
             InkWell(
@@ -276,12 +330,12 @@ class _RetailerScreenState extends State<RetailerScreen> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: purpleCard.withOpacity(0.3),
+                    color: purpleCard.withAlpha(76),
                     width: 1.5,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: purpleCard.withOpacity(0.05),
+                      color: purpleCard.withAlpha(12),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -300,7 +354,7 @@ class _RetailerScreenState extends State<RetailerScreen> {
                     ),
                     Icon(
                       Icons.keyboard_arrow_right,
-                      color: purpleCard.withOpacity(0.7),
+                      color: purpleCard.withAlpha(178),
                     ),
                   ],
                 ),
@@ -314,7 +368,7 @@ class _RetailerScreenState extends State<RetailerScreen> {
         decoration: BoxDecoration(
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withAlpha(12),
               blurRadius: 10,
               offset: const Offset(0, -5),
             ),
@@ -372,7 +426,7 @@ class _RetailerScreenState extends State<RetailerScreen> {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.3),
+              color: color.withAlpha(76),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -386,7 +440,7 @@ class _RetailerScreenState extends State<RetailerScreen> {
                 color: iconBgColor,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(icon, color: textColor.withOpacity(0.9), size: 28),
+              child: Icon(icon, color: textColor.withAlpha(229), size: 28),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -406,7 +460,7 @@ class _RetailerScreenState extends State<RetailerScreen> {
                   Text(
                     subtitle,
                     style: TextStyle(
-                      color: textColor.withOpacity(0.8),
+                      color: textColor.withAlpha(204),
                       fontSize: 13,
                       height: 1.2,
                     ),
@@ -416,7 +470,7 @@ class _RetailerScreenState extends State<RetailerScreen> {
             ),
             Icon(
               Icons.arrow_forward_ios,
-              color: textColor.withOpacity(0.5),
+              color: textColor.withAlpha(127),
               size: 18,
             ),
           ],

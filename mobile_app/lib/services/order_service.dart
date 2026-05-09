@@ -148,6 +148,7 @@ class DailyReport {
   final int approvedOrders;
   final int rejectedOrders;
   final int pendingOrders;
+  final int deliveredOrders;
   final double totalValue;
   final List<Map<String, dynamic>> ordersByRetailer;
   final List<Map<String, dynamic>> lowStockItems;
@@ -158,6 +159,7 @@ class DailyReport {
     required this.approvedOrders,
     required this.rejectedOrders,
     required this.pendingOrders,
+    required this.deliveredOrders,
     required this.totalValue,
     required this.ordersByRetailer,
     required this.lowStockItems,
@@ -171,6 +173,7 @@ class DailyReport {
       approvedOrders: safeInt(json['approvedOrders']),
       rejectedOrders: safeInt(json['rejectedOrders']),
       pendingOrders: safeInt(json['pendingOrders']),
+      deliveredOrders: safeInt(json['deliveredOrders']),
       totalValue: double.tryParse(json['totalValue']?.toString() ?? '0') ?? 0.0,
       ordersByRetailer: List<Map<String, dynamic>>.from(
         json['ordersByRetailer'] ?? [],
@@ -355,7 +358,9 @@ class OrderService {
         .timeout(const Duration(seconds: 15));
     if (res.statusCode == 200) {
       final data = jsonDecode(res.body);
-      return data['isPriority'] == true;
+      // Handle both bool true and number 1 from backend
+      final ps = data['isPriority'];
+      return ps == true || ps == 1 || ps.toString() == '1';
     }
     return false;
   }

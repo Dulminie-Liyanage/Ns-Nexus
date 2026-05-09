@@ -193,7 +193,7 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
   // US-18: Batch update all selected orders
   Future<void> _applyBatchOverride() async {
     if (_selectedOrderIds.isEmpty || _batchTargetStage == null) return;
-    final stageLabels = {
+    final stageLabels = <int, String>{
       1: 'Pending',
       2: 'Approved',
       3: 'Packing',
@@ -202,22 +202,31 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
       6: 'Out for Delivery',
       7: 'Delivered',
     };
+    // Capture values BEFORE clearing state
+    final count = _selectedOrderIds.length;
+    final stage = _batchTargetStage!;
+    final ids = _selectedOrderIds.toList();
     try {
-      await _analyticsSvc.batchOverride(
-        _selectedOrderIds.toList(),
-        _batchTargetStage!,
-      );
+      await _analyticsSvc.batchOverride(ids, stage);
+    } catch (e) {
+      if (mounted)
+        _snack(e.toString().replaceFirst('Exception: ', ''), isError: true);
+      return;
+    }
+    // Clear batch state first
+    if (mounted) {
       setState(() {
         _selectedOrderIds.clear();
         _batchMode = false;
         _batchTargetStage = null;
       });
-      _load();
+    }
+    // Reload in background — don't await so UI isn't blocked
+    _load();
+    if (mounted) {
       _snack(
-        'Batch updated ${_selectedOrderIds.length} orders to ${stageLabels[_batchTargetStage!]}',
+        '✓ $count orders moved to ${stageLabels[stage] ?? 'Stage $stage'}',
       );
-    } catch (e) {
-      _snack(e.toString().replaceFirst('Exception: ', ''), isError: true);
     }
   }
 
@@ -316,7 +325,7 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
                             color: const Color(0xFFE6EFFF),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: const Color(0xFF0056B3).withOpacity(0.2),
+                              color: const Color(0xFF0056B3).withAlpha(51),
                             ),
                           ),
                           child: Row(
@@ -557,20 +566,24 @@ class _OrderCard extends StatelessWidget {
   Color _statusColor(String s) {
     switch (s.toLowerCase()) {
       case 'approved':
-        return Colors.green;
+        return const Color(0xFF16A34A);
       case 'rejected':
-        return Colors.red;
+        return const Color(0xFFDC2626);
       case 'pending':
-        return Colors.orange;
+        return const Color(0xFFEA580C);
+      case 'packing':
+        return const Color(0xFF2563EB);
       case 'assigned':
       case 'processing':
-        return Colors.blue;
-      case 'shipped':
-        return Colors.purple;
+        return const Color(0xFF2563EB);
+      case 'in_3pl_transit':
+      case 'ready_to_ship':
+      case 'out_for_delivery':
+        return const Color(0xFF7C3AED);
       case 'delivered':
-        return Colors.green.shade700;
+        return const Color(0xFF15803D);
       default:
-        return Colors.grey;
+        return const Color(0xFF6B7280);
     }
   }
 
@@ -611,7 +624,7 @@ class _OrderCard extends StatelessWidget {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.02),
+              color: Colors.black.withAlpha(5),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
@@ -688,7 +701,7 @@ class _OrderCard extends StatelessWidget {
                         color: const Color(0xFFE6EFFF),
                         borderRadius: BorderRadius.circular(6),
                         border: Border.all(
-                          color: const Color(0xFF0056B3).withOpacity(0.2),
+                          color: const Color(0xFF0056B3).withAlpha(51),
                         ),
                       ),
                       child: Row(
@@ -718,7 +731,7 @@ class _OrderCard extends StatelessWidget {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
+                    color: statusColor.withAlpha(25),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -1249,10 +1262,10 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
               final isRejectedStage = isRejected && s == 2;
               final isLast = i == _stageLabels.length - 1;
               final color = isRejectedStage
-                  ? Colors.red
+                  ? const Color(0xFFDC2626)
                   : isDone
                   ? const Color(0xFF0056B3)
-                  : Colors.grey.shade300;
+                  : const Color(0xFFD1D5DB);
 
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1266,7 +1279,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
                           height: 26,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: color.withOpacity(0.12),
+                            color: color.withAlpha(30),
                             border: Border.all(
                               color: color,
                               width: isCurrent ? 2 : 1,
@@ -1287,7 +1300,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
                             width: 2,
                             height: 30,
                             color: s < stage
-                                ? const Color(0xFF0056B3).withOpacity(0.25)
+                                ? const Color(0xFF0056B3).withAlpha(63)
                                 : Colors.grey.shade200,
                           ),
                       ],
@@ -1348,10 +1361,13 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
                               ),
                             ),
                           if (isRejectedStage &&
-                              o['RejectionReason'] != null &&
-                              o['RejectionReason'].toString().isNotEmpty)
+                              (o['RejectionReason'] ?? o['rejection_reason']) !=
+                                  null &&
+                              (o['RejectionReason'] ?? o['rejection_reason'])
+                                  .toString()
+                                  .isNotEmpty)
                             Text(
-                              'Reason: ${o['RejectionReason']}',
+                              'Reason: ${o['RejectionReason'] ?? o['rejection_reason']}',
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.red.shade400,

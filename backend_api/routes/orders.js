@@ -1,7 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
-const { logNotification } = require('./notifications');
+// Safe import — if notifications module fails, orders still work
+let logNotification = async () => {}; // default no-op
+try {
+    const notifModule = require('./notifications');
+    if (notifModule && notifModule.logNotification) {
+        logNotification = notifModule.logNotification;
+    }
+} catch (e) {
+    console.log('Notifications module not loaded:', e.message);
+}
 
 // POST /orders - retailer places an order
 // US-10: checkPriorityStatus() — only priority retailers can place urgent orders
@@ -87,7 +96,8 @@ function _placeOrder(req, res, retailer_id, delivery_date, is_urgent, items) {
 router.get('/', (req, res) => {
     const statusFilter = req.query.status;
     let query = `
-        SELECT o.OrderID, o.Status, o.IsUrgent, o.DeliveryDate, o.RejectionReason,
+        SELECT o.OrderID, o.Status, o.IsUrgent, o.DeliveryDate,
+               COALESCE(o.RejectionReason, o.rejection_reason) AS RejectionReason,
                o.CreatedAt, o.CurrentStage, o.TotalPrice, o.TotalWeight,
                u.Name as RetailerName, u.ShopName, u.District, u.UserID as RetailerID,
                COALESCE(lr.approvedCount, 0) as approvedCount,
@@ -217,7 +227,8 @@ router.get('/retailer/:id', (req, res) => {
     }
     const query = `
         SELECT o.OrderID, o.RetailerID, o.Status, o.IsUrgent, o.DeliveryDate,
-               o.RejectionReason, o.CreatedAt, o.TotalPrice,
+               COALESCE(o.RejectionReason, o.rejection_reason) AS RejectionReason,
+               o.CreatedAt, o.TotalPrice,
                o.TotalWeight, o.CurrentStage
         FROM orders o
         WHERE o.RetailerID = ?
@@ -248,6 +259,61 @@ router.get('/:id/items', (req, res) => {
 });
 
 // PUT /orders/:id - approve or reject order
+// US-18: PUT /orders/batch-override
+// Warehouse Manager updates multiple orders to same stage at once
+// Body: { orderIds: [1,2,3], stage: 3 }
+// ─────────────────────────────────────────────────────────────────────────────
+router.put('/batch-override', (req, res) => {
+    const { orderIds, stage } = req.body;
+
+    if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
+        return res.status(400).json({ message: 'orderIds array required' });
+    }
+
+    const stageStatusMap = {
+        1: 'pending', 2: 'approved', 3: 'packing',
+        4: 'in_3pl_transit', 5: 'ready_to_ship',
+        6: 'out_for_delivery', 7: 'delivered',
+    };
+
+    const stageNum = parseInt(stage);
+    if (!stageNum || stageNum < 1 || stageNum > 7) {
+        return res.status(400).json({ message: 'Stage must be between 1 and 7' });
+    }
+
+    const newStatus = stageStatusMap[stageNum];
+    const placeholders = orderIds.map(() => '?').join(',');
+
+    console.log('[BATCH] Updating orders:', orderIds, 'to stage:', stageNum, 'status:', newStatus);
+    db.query(
+        `UPDATE orders SET CurrentStage = ?, Status = ? WHERE OrderID IN (${placeholders})`,
+        [stageNum, newStatus, ...orderIds], (err, result) => {
+            if (err) {
+                console.error('[BATCH] UPDATE failed:', err.message);
+                return res.status(500).json({ message: 'Batch override failed', error: err.message });
+            }
+
+            console.log('[BATCH] Updated rows:', result.affectedRows);
+
+            // Notify each retailer
+            db.query(
+                `SELECT OrderID, RetailerID FROM orders WHERE OrderID IN (${placeholders})`,
+                orderIds, (_, rows) => {
+                    if (rows) {
+                        rows.forEach(r => logNotification(r.RetailerID, r.OrderID, newStatus));
+                    }
+                });
+
+            res.json({
+                message: 'Batch override complete',
+                updated: result.affectedRows,
+                stage: stageNum,
+                status: newStatus,
+            });
+        });
+});
+
+
 router.put('/:id', (req, res) => {
     const orderID = req.params.id;
     const { status, rejection_reason, items } = req.body;
@@ -288,8 +354,8 @@ router.put('/:id', (req, res) => {
     // CASE 3: REJECTION
     } else if (status === 'rejected') {
         if (!rejection_reason) return res.status(400).json({ message: 'Rejection reason is required' });
-        const rejectQuery = 'UPDATE orders SET Status = ?, RejectionReason = ?, CurrentStage = 2 WHERE OrderID = ?';
-        db.query(rejectQuery, [status, rejection_reason, orderID], (err) => {
+        const rejectQuery = 'UPDATE orders SET Status = ?, RejectionReason = ?, rejection_reason = ?, CurrentStage = 2 WHERE OrderID = ?';
+        db.query(rejectQuery, [status, rejection_reason, rejection_reason, orderID], (err) => {
             if (err) return res.status(500).json({ message: 'Database error', error: err });
             res.status(200).json({ message: 'Order rejected successfully' });
         });
@@ -517,52 +583,115 @@ router.put('/:id/stage-override', (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// US-18: PUT /orders/batch-override
-// Warehouse Manager updates multiple orders to same stage at once
-// Body: { orderIds: [1,2,3], stage: 3 }
+
 // ─────────────────────────────────────────────────────────────────────────────
-router.put('/batch-override', (req, res) => {
-    const { orderIds, stage } = req.body;
+// US-26: GET /orders/retailer/:id/heavy-check
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/retailer/:id/heavy-check', (req, res) => {
+    const retailerId = req.params.id;
+    const q = (sql, params) => new Promise((resolve, reject) =>
+        db.query(sql, params, (err, rows) => err ? reject(err) : resolve(rows)));
 
-    if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
-        return res.status(400).json({ message: 'orderIds array required' });
-    }
-
-    const stageStatusMap = {
-        1: 'pending', 2: 'approved', 3: 'packing',
-        4: 'in_3pl_transit', 5: 'ready_to_ship',
-        6: 'out_for_delivery', 7: 'delivered',
-    };
-
-    const stageNum = parseInt(stage);
-    if (!stageNum || stageNum < 1 || stageNum > 7) {
-        return res.status(400).json({ message: 'Stage must be between 1 and 7' });
-    }
-
-    const newStatus = stageStatusMap[stageNum];
-    const placeholders = orderIds.map(() => '?').join(',');
-
-    db.query(
-        `UPDATE orders SET CurrentStage = ?, Status = ? WHERE OrderID IN (${placeholders})`,
-        [stageNum, newStatus, ...orderIds], (err, result) => {
-            if (err) return res.status(500).json({ message: 'Batch override failed', error: err.message });
-
-            // Notify each retailer
-            db.query(
-                `SELECT OrderID, RetailerID FROM orders WHERE OrderID IN (${placeholders})`,
-                orderIds, (_, rows) => {
-                    if (rows) {
-                        rows.forEach(r => logNotification(r.RetailerID, r.OrderID, newStatus));
-                    }
-                });
-
-            res.json({
-                message: 'Batch override complete',
-                updated: result.affectedRows,
-                stage: stageNum,
-                status: newStatus,
-            });
+    q(`SELECT COUNT(*) as cnt FROM orders WHERE RetailerID = ? AND Status != 'rejected'`, [retailerId])
+    .then(([countRow]) => {
+        if (countRow.cnt < 5) return res.json({ isHeavy: false, reason: 'insufficient_orders' });
+        return Promise.all([
+            q(`SELECT COUNT(*) as cnt FROM orders WHERE RetailerID = ? AND (TotalWeight >= 50 OR TotalPrice >= 10000)`, [retailerId]),
+            q(`SELECT COUNT(DISTINCT oi.ProductID) as cnt FROM order_items oi JOIN orders o ON oi.OrderID = o.OrderID WHERE o.RetailerID = ?`, [retailerId]),
+        ]).then(([bulkRow, productRow]) => {
+            const isHeavy = bulkRow[0].cnt >= 1 && productRow[0].cnt >= 3;
+            res.json({ isHeavy, orderCount: countRow.cnt });
         });
+    }).catch(err => res.json({ isHeavy: false, error: err.message }));
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// US-26: GET /orders/retailer/:id/templates
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/retailer/:id/templates', (req, res) => {
+    const retailerId = req.params.id;
+    db.query(
+        `SELECT o.OrderID, o.TotalPrice, o.TotalWeight, o.CreatedAt,
+                oi.ProductID, oi.QtyRequested,
+                p.ProductName, p.SKU, p.Unit, p.Price as CurrentPrice, p.Weight
+         FROM orders o
+         JOIN order_items oi ON o.OrderID = oi.OrderID
+         JOIN products p ON oi.ProductID = p.ProductID
+         WHERE o.RetailerID = ? AND o.Status NOT IN ('rejected','pending')
+         ORDER BY o.CreatedAt DESC LIMIT 100`,
+        [retailerId], (err, orders) => {
+            if (err) return res.status(500).json({ message: 'Failed', error: err.message });
+            if (!orders || orders.length < 3) {
+                return res.json({ templates: [], reason: 'insufficient_history' });
+            }
+
+            // Group by order
+            const orderMap = {};
+            orders.forEach(row => {
+                if (!orderMap[row.OrderID]) {
+                    orderMap[row.OrderID] = {
+                        orderId: row.OrderID,
+                        totalPrice: parseFloat(row.TotalPrice) || 0,
+                        totalWeight: parseFloat(row.TotalWeight) || 0,
+                        date: row.CreatedAt,
+                        items: []
+                    };
+                }
+                orderMap[row.OrderID].items.push({
+                    productId: row.ProductID,
+                    productName: row.ProductName,
+                    sku: row.SKU,
+                    unit: row.Unit,
+                    qty: row.QtyRequested,
+                    currentPrice: parseFloat(row.CurrentPrice) || 0,
+                });
+            });
+
+            const orderList = Object.values(orderMap);
+            if (orderList.length < 2) return res.json({ templates: [], reason: 'insufficient_history' });
+
+            const byPrice = [...orderList].sort((a, b) => b.totalPrice - a.totalPrice);
+            const midIdx = Math.floor(byPrice.length / 2);
+            const medianPrice = byPrice[midIdx]?.totalPrice || 0;
+            const byDate = [...orderList].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const calcTotal = items => items.reduce((s, i) => s + (i.qty * i.currentPrice), 0);
+
+            const templates = [
+                {
+                    id: 'large_bulk',
+                    name: 'Large Bulk Order',
+                    description: 'Based on your highest value order',
+                    icon: 'inventory_2',
+                    items: byPrice[0].items,
+                    estimatedTotal: calcTotal(byPrice[0].items),
+                },
+                {
+                    id: 'medium_weekly',
+                    name: 'Medium Weekly Order',
+                    description: 'Based on your typical weekly order',
+                    icon: 'calendar_today',
+                    items: byPrice[midIdx].items,
+                    estimatedTotal: calcTotal(byPrice[midIdx].items),
+                },
+                {
+                    id: 'emergency_restock',
+                    name: 'Emergency Restock',
+                    description: 'Essential items at reduced quantities',
+                    icon: 'bolt',
+                    items: (byDate.find(o => o.totalPrice < medianPrice) || byDate[0]).items.map(i => ({
+                        ...i, qty: Math.max(1, Math.ceil(i.qty * 0.5))
+                    })),
+                    estimatedTotal: calcTotal((byDate.find(o => o.totalPrice < medianPrice) || byDate[0]).items.map(i => ({
+                        ...i, qty: Math.max(1, Math.ceil(i.qty * 0.5))
+                    }))),
+                },
+            ].filter(t => t.items && t.items.length > 0);
+
+            res.json({ templates });
+        }
+    );
+});
+
 
 module.exports = router;

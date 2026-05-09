@@ -3,9 +3,15 @@ const router = express.Router();
 const db = require('../config/db');
 
 // Table already exists as: notifications(NotificationID, UserID, OrderID, Message, IsRead, CreatedAt)
-// Add Title column if missing (safe to run multiple times)
-db.query(`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS Title VARCHAR(100) NOT NULL DEFAULT 'Order Update'`,
-  err => { if (err) console.log('Title column may already exist:', err.message); });
+// Add Title column if missing — wrapped in try-catch so module loads even if DB is slow
+try {
+    db.query(
+        `ALTER TABLE notifications ADD COLUMN IF NOT EXISTS Title VARCHAR(100) NOT NULL DEFAULT 'Order Update'`,
+        err => { if (err) console.log('Title column note:', err.message); }
+    );
+} catch (e) {
+    console.log('notifications startup:', e.message);
+}
 
 function q(sql, params = []) {
   return new Promise((res, rej) =>
