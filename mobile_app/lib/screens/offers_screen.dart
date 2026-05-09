@@ -7,7 +7,6 @@ import 'order_screen.dart';
 double _d(dynamic v) => double.tryParse(v?.toString() ?? '0') ?? 0.0;
 int _ii(dynamic v) => int.tryParse(v?.toString() ?? '0') ?? 0;
 
-// Sanitize API response — convert string numbers to actual nums
 dynamic _sanitize(dynamic obj) {
   if (obj is Map) {
     return Map<String, dynamic>.fromEntries(
@@ -24,8 +23,19 @@ dynamic _sanitize(dynamic obj) {
   return obj;
 }
 
+String _fmtDate(dynamic raw) {
+  if (raw == null || raw.toString() == 'null' || raw.toString().isEmpty)
+    return '';
+  try {
+    final d = DateTime.parse(raw.toString());
+    return '${d.day}/${d.month}/${d.year}';
+  } catch (_) {
+    return raw.toString().split('T').first;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// RETAILER VIEW — Personalized offers
+// RETAILER VIEW
 // ─────────────────────────────────────────────────────────────────────────────
 class OffersScreen extends StatefulWidget {
   const OffersScreen({super.key});
@@ -59,17 +69,14 @@ class _OffersScreenState extends State<OffersScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final userId = prefs.getString('userId') ?? '';
-      if (userId.isEmpty) throw Exception('Session error');
       final token = await _token();
       final headers = {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       };
-
       final res = await http
           .get(Uri.parse('$_base/offers/retailer/$userId'), headers: headers)
           .timeout(const Duration(seconds: 10));
-
       final data = _sanitize(jsonDecode(res.body)) as Map<String, dynamic>;
       setState(() {
         _offers = (data['offers'] ?? []) as List;
@@ -77,7 +84,6 @@ class _OffersScreenState extends State<OffersScreen> {
         _loading = false;
       });
     } catch (e) {
-      // If offers endpoint not available yet, just show empty screen
       setState(() {
         _offers = [];
         _combos = [];
@@ -92,8 +98,6 @@ class _OffersScreenState extends State<OffersScreen> {
         return const Color(0xFF0056B3);
       case 'combo':
         return const Color(0xFF16A34A);
-      case 'flash_sale':
-        return const Color(0xFFDC2626);
       default:
         return const Color(0xFF7C3AED);
     }
@@ -104,9 +108,7 @@ class _OffersScreenState extends State<OffersScreen> {
       case 'bulk_discount':
         return '💰 Bulk Discount';
       case 'combo':
-        return '🎁 Combo Deal';
-      case 'flash_sale':
-        return '⚡ Flash Sale';
+        return '🎁 Combo Bundle';
       default:
         return '🏷️ Special Offer';
     }
@@ -151,7 +153,6 @@ class _OffersScreenState extends State<OffersScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Hero banner
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(18),
@@ -182,7 +183,7 @@ class _OffersScreenState extends State<OffersScreen> {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '${_offers.length} exclusive offers based on your order history',
+                  '${_offers.length} exclusive offer${_offers.length != 1 ? 's' : ''} available',
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               ],
@@ -190,7 +191,6 @@ class _OffersScreenState extends State<OffersScreen> {
           ),
           const SizedBox(height: 20),
 
-          // Active offers
           if (_offers.isNotEmpty) ...[
             const Text(
               'Active Offers',
@@ -201,11 +201,10 @@ class _OffersScreenState extends State<OffersScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            ..._offers.map((offer) => _offerCard(offer)),
+            ..._offers.map((o) => _offerCard(o)),
             const SizedBox(height: 20),
           ],
 
-          // Combo suggestions
           if (_combos.isNotEmpty) ...[
             const Text(
               'Frequently Ordered Together',
@@ -217,7 +216,7 @@ class _OffersScreenState extends State<OffersScreen> {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Products you typically order — add them quickly',
+              'Products you usually order — add quickly',
               style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
             ),
             const SizedBox(height: 12),
@@ -229,14 +228,33 @@ class _OffersScreenState extends State<OffersScreen> {
   }
 
   Widget _offerCard(dynamic offer) {
-    final color = _offerColor(offer['OfferType'] ?? '');
+    final color = _offerColor(offer['OfferType']?.toString() ?? '');
     final discount = _d(offer['DiscountPercent']);
     final minOrder = _d(offer['MinOrderValue']);
-    final expiry = offer['ExpiresAt']?.toString();
-    final expiryStr = expiry != null ? expiry.split('T').first : 'No expiry';
+    final expiryRaw = offer['ExpiresAt']?.toString();
+    final createdRaw = offer['CreatedAt']?.toString();
+
+    // Expiry info
+    String expiryStr = 'No expiry date';
+    Color expiryColor = Colors.grey.shade500;
+    if (expiryRaw != null && expiryRaw != 'null' && expiryRaw.isNotEmpty) {
+      try {
+        final d = DateTime.parse(expiryRaw);
+        final diff = d.difference(DateTime.now()).inDays;
+        expiryStr = 'Expires ${d.day}/${d.month}/${d.year}';
+        if (diff <= 3)
+          expiryColor = Colors.red.shade600;
+        else if (diff <= 7)
+          expiryColor = Colors.orange.shade600;
+        else
+          expiryColor = Colors.green.shade600;
+      } catch (_) {
+        expiryStr = expiryRaw.split('T').first;
+      }
+    }
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -245,7 +263,7 @@ class _OffersScreenState extends State<OffersScreen> {
       ),
       child: Column(
         children: [
-          // Top banner
+          // Header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
@@ -268,7 +286,7 @@ class _OffersScreenState extends State<OffersScreen> {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    _offerTypeLabel(offer['OfferType'] ?? ''),
+                    _offerTypeLabel(offer['OfferType']?.toString() ?? ''),
                     style: TextStyle(
                       fontSize: 11,
                       color: color,
@@ -306,17 +324,17 @@ class _OffersScreenState extends State<OffersScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  offer['Title'] ?? '',
+                  offer['Title']?.toString() ?? '',
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF1E293B),
                   ),
                 ),
-                if ((offer['Description'] ?? '').isNotEmpty) ...[
+                if ((offer['Description']?.toString() ?? '').isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(
-                    offer['Description'] ?? '',
+                    offer['Description'].toString(),
                     style: const TextStyle(
                       fontSize: 12,
                       color: Color(0xFF64748B),
@@ -324,51 +342,147 @@ class _OffersScreenState extends State<OffersScreen> {
                   ),
                 ],
                 const SizedBox(height: 12),
-                Row(
+
+                // Info row
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 6,
                   children: [
-                    if (minOrder > 0) ...[
-                      Icon(
+                    if (minOrder > 0)
+                      _infoChip(
                         Icons.shopping_bag_outlined,
-                        size: 14,
-                        color: Colors.grey.shade400,
+                        'Min: LKR ${minOrder.toStringAsFixed(0)}',
+                        Colors.grey.shade600,
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Min order: LKR ${minOrder.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF64748B),
-                        ),
+                    _infoChip(Icons.schedule_outlined, expiryStr, expiryColor),
+                    if (createdRaw != null && createdRaw != 'null')
+                      _infoChip(
+                        Icons.calendar_today_outlined,
+                        'Added: ${_fmtDate(createdRaw)}',
+                        Colors.grey.shade500,
                       ),
-                      const SizedBox(width: 12),
-                    ],
-                    Icon(
-                      Icons.schedule_outlined,
-                      size: 14,
-                      color: Colors.grey.shade400,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Expires: $expiryStr',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  height: 42,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            OrderScreen(offerDiscount: _d(discount)),
+
+                // Combo products preview
+                if (offer['OfferType'] == 'combo' &&
+                    offer['comboProducts'] != null) ...[
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Bundle includes:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  ...(offer['comboProducts'] as List).map(
+                    (p) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle_outline,
+                            size: 14,
+                            color: Color(0xFF16A34A),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              p['ProductName']?.toString() ?? '',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF1E293B),
+                              ),
+                            ),
+                          ),
+                          Text(
+                            'LKR ${_d(p['Price']).toStringAsFixed(0)}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                  ),
+                ],
+
+                // Savings callout
+                if (discount > 0) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green.shade100),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.savings_outlined,
+                          size: 16,
+                          color: Colors.green.shade600,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'You save ${discount.toInt()}% on your total order amount',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.green.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      // For combo: preload the bundle products
+                      // For bulk_discount: just open order with discount
+                      List<Map<String, dynamic>>? comboItems;
+                      if (offer['OfferType'] == 'combo' &&
+                          offer['ProductIDs'] != null &&
+                          offer['ProductIDs'].toString() != 'null') {
+                        try {
+                          final ids =
+                              (jsonDecode(offer['ProductIDs'].toString())
+                                      as List)
+                                  .map((e) => _ii(e))
+                                  .toList();
+                          if (ids.isNotEmpty) {
+                            comboItems = ids
+                                .map(
+                                  (id) => {
+                                    'productId': id.toString(),
+                                    'qty': 1,
+                                  },
+                                )
+                                .toList();
+                          }
+                        } catch (_) {}
+                      }
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => OrderScreen(
+                            offerDiscount: discount,
+                            offerMinValue: minOrder,
+                            offerTitle: offer['Title']?.toString(),
+                            preloadedItems: comboItems,
+                          ),
+                        ),
+                      );
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: color,
                       foregroundColor: Colors.white,
@@ -377,9 +491,11 @@ class _OffersScreenState extends State<OffersScreen> {
                       ),
                       elevation: 0,
                     ),
-                    child: const Text(
-                      'Place Order with Offer',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                    child: Text(
+                      discount > 0
+                          ? 'Place Order — Save ${discount.toInt()}% 🎉'
+                          : 'Place Order with Offer',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
                 ),
@@ -390,6 +506,22 @@ class _OffersScreenState extends State<OffersScreen> {
       ),
     );
   }
+
+  Widget _infoChip(IconData icon, String label, Color color) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 13, color: color),
+      const SizedBox(width: 4),
+      Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          color: color,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    ],
+  );
 
   Widget _comboSection() {
     return Container(
@@ -432,7 +564,7 @@ class _OffersScreenState extends State<OffersScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          p['ProductName'] ?? '',
+                          p['ProductName']?.toString() ?? '',
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -461,7 +593,7 @@ class _OffersScreenState extends State<OffersScreen> {
                         ),
                       ),
                       Text(
-                        p['Unit'] ?? '',
+                        p['Unit']?.toString() ?? '',
                         style: const TextStyle(
                           fontSize: 10,
                           color: Color(0xFF94A3B8),
@@ -547,7 +679,7 @@ class _OffersScreenState extends State<OffersScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WM VIEW — Manage offers
+// WM VIEW — Manage Offers
 // ─────────────────────────────────────────────────────────────────────────────
 class ManageOffersScreen extends StatefulWidget {
   const ManageOffersScreen({super.key});
@@ -614,10 +746,12 @@ class _ManageOffersScreenState extends State<ManageOffersScreen> {
     } catch (_) {}
   }
 
-  void _showCreateDialog({dynamic existing}) {
-    final titleCtrl = TextEditingController(text: existing?['Title'] ?? '');
+  Future<void> _showCreateDialog({dynamic existing}) async {
+    final titleCtrl = TextEditingController(
+      text: existing?['Title']?.toString() ?? '',
+    );
     final descCtrl = TextEditingController(
-      text: existing?['Description'] ?? '',
+      text: existing?['Description']?.toString() ?? '',
     );
     final discountCtrl = TextEditingController(
       text: existing?['DiscountPercent']?.toString() ?? '',
@@ -625,7 +759,40 @@ class _ManageOffersScreenState extends State<ManageOffersScreen> {
     final minCtrl = TextEditingController(
       text: existing?['MinOrderValue']?.toString() ?? '',
     );
-    String type = existing?['OfferType'] ?? 'bulk_discount';
+    String type = existing?['OfferType']?.toString() ?? 'bulk_discount';
+
+    DateTime? selectedExpiry;
+    final expiryRaw = existing?['ExpiresAt']?.toString();
+    if (expiryRaw != null && expiryRaw != 'null' && expiryRaw.isNotEmpty) {
+      try {
+        selectedExpiry = DateTime.parse(expiryRaw);
+      } catch (_) {}
+    }
+
+    // Load products for combo selection
+    List<dynamic> allProducts = [];
+    List<int> selectedProductIds = [];
+    try {
+      final token = await _token();
+      final res = await http
+          .get(
+            Uri.parse('$_base/products'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 5));
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        allProducts = (data['products'] ?? data) as List;
+      }
+    } catch (_) {}
+
+    // Pre-select existing product IDs
+    if (existing?['ProductIDs'] != null) {
+      try {
+        final ids = jsonDecode(existing!['ProductIDs'].toString()) as List;
+        selectedProductIds = ids.map((e) => _ii(e)).toList();
+      } catch (_) {}
+    }
 
     showModalBottomSheet(
       context: context,
@@ -647,14 +814,25 @@ class _ManageOffersScreenState extends State<ManageOffersScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  existing == null ? 'Create New Offer' : 'Edit Offer',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        existing == null ? 'Create New Offer' : 'Edit Offer',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
+
                 TextField(
                   controller: titleCtrl,
                   decoration: _field('Offer Title *'),
@@ -666,6 +844,7 @@ class _ManageOffersScreenState extends State<ManageOffersScreen> {
                   decoration: _field('Description'),
                 ),
                 const SizedBox(height: 10),
+
                 DropdownButtonFormField<String>(
                   value: type,
                   decoration: _field('Offer Type'),
@@ -678,14 +857,11 @@ class _ManageOffersScreenState extends State<ManageOffersScreen> {
                       value: 'combo',
                       child: Text('🎁 Combo Deal'),
                     ),
-                    DropdownMenuItem(
-                      value: 'flash_sale',
-                      child: Text('⚡ Flash Sale'),
-                    ),
                   ],
                   onChanged: (v) => setS(() => type = v!),
                 ),
                 const SizedBox(height: 10),
+
                 Row(
                   children: [
                     Expanded(
@@ -705,39 +881,258 @@ class _ManageOffersScreenState extends State<ManageOffersScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 14),
+
+                // Product selection for Combo type
+                if (type == 'combo') ...[
+                  const Text(
+                    'Bundle Products',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Select products included in this combo',
+                    style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                  ),
+                  const SizedBox(height: 8),
+                  if (allProducts.isEmpty)
+                    const Text(
+                      'No products available',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                    )
+                  else
+                    Container(
+                      constraints: const BoxConstraints(maxHeight: 200),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: allProducts.length,
+                        itemBuilder: (_, i) {
+                          final p = allProducts[i];
+                          final pid = _ii(p['ProductID'] ?? p['id']);
+                          final isSelected = selectedProductIds.contains(pid);
+                          return CheckboxListTile(
+                            dense: true,
+                            value: isSelected,
+                            activeColor: const Color(0xFF16A34A),
+                            onChanged: (v) => setS(() {
+                              if (v == true) {
+                                selectedProductIds.add(pid);
+                              } else {
+                                selectedProductIds.remove(pid);
+                              }
+                            }),
+                            title: Text(
+                              p['ProductName']?.toString() ?? '',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            subtitle: Text(
+                              'LKR ${_d(p['Price']).toStringAsFixed(0)} / ${p['Unit'] ?? ''}',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  const SizedBox(height: 10),
+                ],
+
+                const SizedBox(height: 4),
+
+                // Expiry date section
+                const Text(
+                  'Offer Valid Period',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Quick chips
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _chip(
+                      '7 days',
+                      7,
+                      selectedExpiry,
+                      setS,
+                      (d) => selectedExpiry = d,
+                    ),
+                    _chip(
+                      '14 days',
+                      14,
+                      selectedExpiry,
+                      setS,
+                      (d) => selectedExpiry = d,
+                    ),
+                    _chip(
+                      '30 days',
+                      30,
+                      selectedExpiry,
+                      setS,
+                      (d) => selectedExpiry = d,
+                    ),
+                    _chip(
+                      '60 days',
+                      60,
+                      selectedExpiry,
+                      setS,
+                      (d) => selectedExpiry = d,
+                    ),
+                    _chip(
+                      '90 days',
+                      90,
+                      selectedExpiry,
+                      setS,
+                      (d) => selectedExpiry = d,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                // Date picker row
+                Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () async {
+                          final picked = await showDatePicker(
+                            context: ctx,
+                            initialDate:
+                                selectedExpiry ??
+                                DateTime.now().add(const Duration(days: 30)),
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365),
+                            ),
+                            builder: (c, child) => Theme(
+                              data: ThemeData.light().copyWith(
+                                colorScheme: const ColorScheme.light(
+                                  primary: Color(0xFF0056B3),
+                                ),
+                              ),
+                              child: child!,
+                            ),
+                          );
+                          if (picked != null)
+                            setS(() => selectedExpiry = picked);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: selectedExpiry != null
+                                  ? const Color(0xFF0056B3)
+                                  : Colors.grey.shade400,
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                            color: selectedExpiry != null
+                                ? const Color(0xFFE6EFFF)
+                                : Colors.white,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.calendar_today_outlined,
+                                size: 16,
+                                color: selectedExpiry != null
+                                    ? const Color(0xFF0056B3)
+                                    : Colors.grey,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  selectedExpiry != null
+                                      ? 'Expires: ${selectedExpiry!.day}/${selectedExpiry!.month}/${selectedExpiry!.year}'
+                                      : 'Pick custom date',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: selectedExpiry != null
+                                        ? const Color(0xFF0056B3)
+                                        : Colors.grey.shade500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (selectedExpiry != null) ...[
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: Icon(Icons.clear, color: Colors.red.shade400),
+                        onPressed: () => setS(() => selectedExpiry = null),
+                        tooltip: 'No expiry',
+                      ),
+                    ],
+                  ],
+                ),
                 const SizedBox(height: 20),
+
                 SizedBox(
                   width: double.infinity,
                   height: 48,
                   child: ElevatedButton(
                     onPressed: () async {
-                      if (titleCtrl.text.isEmpty) return;
+                      if (titleCtrl.text.trim().isEmpty) return;
                       final token = await _token();
+                      String? expiryStr;
+                      if (selectedExpiry != null) {
+                        final y = selectedExpiry!.year;
+                        final m = selectedExpiry!.month.toString().padLeft(
+                          2,
+                          '0',
+                        );
+                        final d = selectedExpiry!.day.toString().padLeft(
+                          2,
+                          '0',
+                        );
+                        expiryStr = '$y-$m-$d';
+                      }
                       final body = jsonEncode({
-                        'title': titleCtrl.text,
-                        'description': descCtrl.text,
+                        'title': titleCtrl.text.trim(),
+                        'description': descCtrl.text.trim(),
                         'offerType': type,
                         'discountPercent':
                             double.tryParse(discountCtrl.text) ?? 0,
                         'minOrderValue': double.tryParse(minCtrl.text) ?? 0,
-                        'productIds': [],
+                        'expiresAt': expiryStr,
+                        'productIds': selectedProductIds,
                       });
+                      final headers = {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer $token',
+                      };
                       if (existing == null) {
                         await http.post(
                           Uri.parse('$_base/offers'),
-                          headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer $token',
-                          },
+                          headers: headers,
                           body: body,
                         );
                       } else {
                         await http.put(
-                          Uri.parse('$_base/offers/${existing['OfferID']}'),
-                          headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': 'Bearer $token',
-                          },
+                          Uri.parse(
+                            '$_base/offers/${_ii(existing['OfferID'])}',
+                          ),
+                          headers: headers,
                           body: body,
                         );
                       }
@@ -757,8 +1152,46 @@ class _ManageOffersScreenState extends State<ManageOffersScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 8),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Duration quick-select chip
+  Widget _chip(
+    String label,
+    int days,
+    DateTime? selected,
+    StateSetter setS,
+    Function(DateTime) onSel,
+  ) {
+    final target = DateTime.now().add(Duration(days: days));
+    final isActive =
+        selected != null &&
+        selected.day == target.day &&
+        selected.month == target.month &&
+        selected.year == target.year;
+    return GestureDetector(
+      onTap: () => setS(() => onSel(target)),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isActive ? const Color(0xFF0056B3) : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isActive ? const Color(0xFF0056B3) : Colors.grey.shade300,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: isActive ? Colors.white : const Color(0xFF64748B),
+            fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
           ),
         ),
       ),
@@ -768,7 +1201,7 @@ class _ManageOffersScreenState extends State<ManageOffersScreen> {
   InputDecoration _field(String label) => InputDecoration(
     labelText: label,
     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
   );
 
   @override
@@ -789,14 +1222,10 @@ class _ManageOffersScreenState extends State<ManageOffersScreen> {
         iconTheme: const IconThemeData(color: Color(0xFF1E293B)),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
-          IconButton(
-            icon: const Icon(Icons.add, color: Color(0xFF0056B3)),
-            onPressed: () => _showCreateDialog(),
-          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showCreateDialog(),
+        onPressed: () async => await _showCreateDialog(),
         backgroundColor: const Color(0xFF0056B3),
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text(
@@ -830,13 +1259,24 @@ class _ManageOffersScreenState extends State<ManageOffersScreen> {
               ),
             )
           : ListView.separated(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
               itemCount: _offers.length,
               separatorBuilder: (_, __) => const SizedBox(height: 10),
               itemBuilder: (_, i) {
                 final o = _offers[i];
                 final isActive = _ii(o['IsActive']) == 1;
                 final discount = _d(o['DiscountPercent']);
+                final expiryRaw = o['ExpiresAt']?.toString();
+                final expiryStr =
+                    (expiryRaw != null &&
+                        expiryRaw != 'null' &&
+                        expiryRaw.isNotEmpty)
+                    ? 'Expires: ${_fmtDate(expiryRaw)}'
+                    : 'No expiry';
+                final createdStr = o['CreatedAt'] != null
+                    ? _fmtDate(o['CreatedAt'])
+                    : '';
+
                 return Container(
                   decoration: BoxDecoration(
                     color: isActive ? Colors.white : Colors.grey.shade50,
@@ -867,7 +1307,7 @@ class _ManageOffersScreenState extends State<ManageOffersScreen> {
                       ),
                     ),
                     title: Text(
-                      o['Title'] ?? '',
+                      o['Title']?.toString() ?? '',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
@@ -890,6 +1330,23 @@ class _ManageOffersScreenState extends State<ManageOffersScreen> {
                             ),
                           ),
                         Text(
+                          expiryStr,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isActive
+                                ? Colors.orange.shade700
+                                : Colors.grey,
+                          ),
+                        ),
+                        if (createdStr.isNotEmpty)
+                          Text(
+                            'Created: $createdStr',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey.shade400,
+                            ),
+                          ),
+                        Text(
                           isActive ? '✅ Active' : '❌ Inactive',
                           style: TextStyle(
                             fontSize: 11,
@@ -903,7 +1360,8 @@ class _ManageOffersScreenState extends State<ManageOffersScreen> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.edit_outlined, size: 18),
-                          onPressed: () => _showCreateDialog(existing: o),
+                          onPressed: () async =>
+                              await _showCreateDialog(existing: o),
                         ),
                         IconButton(
                           icon: Icon(
@@ -911,7 +1369,7 @@ class _ManageOffersScreenState extends State<ManageOffersScreen> {
                             size: 18,
                             color: Colors.red.shade400,
                           ),
-                          onPressed: () => _deleteOffer(o['OfferID']),
+                          onPressed: () => _deleteOffer(_ii(o['OfferID'])),
                         ),
                       ],
                     ),

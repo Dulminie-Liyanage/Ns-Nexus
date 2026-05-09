@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
@@ -36,28 +38,32 @@ class _RetailerScreenState extends State<RetailerScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         final prefs = await SharedPreferences.getInstance();
-        final userId = prefs.getString('userId') ?? '';
-
-        // First use cached value so UI shows instantly
         final strVal = prefs.getString('priorityStatus') ?? '';
         final intVal = prefs.getInt('priorityStatus') ?? 0;
-        final cachedPriority = strVal == '1' || strVal == 'true' || intVal == 1;
-        if (mounted) setState(() => _isPriority = cachedPriority);
+        final priority = strVal == '1' || strVal == 'true' || intVal == 1;
+        if (mounted) setState(() => _isPriority = priority);
 
-        // Then fetch fresh from server in background
+        // Fetch fresh in background
+        final userId = prefs.getString('userId') ?? '';
+        final token =
+            prefs.getString('sessionToken') ?? prefs.getString('token') ?? '';
         if (userId.isNotEmpty) {
           try {
-            final fresh = await OrderService()
-                .checkPriorityStatus(userId)
+            final res = await http
+                .get(
+                  Uri.parse(
+                    'http://15.235.160.20:25568/users/$userId/priority',
+                  ),
+                  headers: {'Authorization': 'Bearer $token'},
+                )
                 .timeout(const Duration(seconds: 5));
-            debugPrint('Priority status fetched: $fresh for userId: $userId');
-            // Save updated value
-            await prefs.setString('priorityStatus', fresh ? '1' : '0');
-            if (mounted) setState(() => _isPriority = fresh);
-          } catch (e) {
-            debugPrint('Priority fetch error: $e');
-            // Keep cached value if server unreachable
-          }
+            if (res.statusCode == 200) {
+              final fresh =
+                  res.body.contains('true') || res.body.contains(':1');
+              await prefs.setString('priorityStatus', fresh ? '1' : '0');
+              if (mounted) setState(() => _isPriority = fresh);
+            }
+          } catch (_) {}
         }
       } catch (_) {
         if (mounted) setState(() => _isPriority = false);
@@ -280,40 +286,38 @@ class _RetailerScreenState extends State<RetailerScreen> {
             ),
             const SizedBox(height: 16),
 
-            // 4. Smart Quick Order — US-26: templates for heavy retailers
-            if (_isPriority == true)
-              _buildOrderCard(
-                context: context,
-                color: const Color(0xFF7C3AED),
-                icon: Icons.auto_awesome_outlined,
-                title: 'Smart Quick Order',
-                subtitle:
-                    'Personalized templates based on your bulk order history',
-                textColor: textColor,
-                iconBgColor: Colors.black.withAlpha(13),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SmartReorderScreen()),
-                ),
+            // 4. Smart Quick Order — US-26: visible to all retailers
+            _buildOrderCard(
+              context: context,
+              color: const Color(0xFF7C3AED),
+              icon: Icons.auto_awesome_outlined,
+              title: 'Smart Quick Order',
+              subtitle:
+                  'Personalized templates based on your bulk order history',
+              textColor: textColor,
+              iconBgColor: Colors.black.withAlpha(13),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SmartReorderScreen()),
               ),
-            if (_isPriority == true) const SizedBox(height: 16),
+            ),
+            const SizedBox(height: 16),
 
-            // 5. Special Offers — US-27: personalized offers for heavy retailers
-            if (_isPriority == true)
-              _buildOrderCard(
-                context: context,
-                color: const Color(0xFFDC2626),
-                icon: Icons.local_offer_outlined,
-                title: 'Special Offers',
-                subtitle: 'Exclusive bulk deals and combo offers just for you',
-                textColor: textColor,
-                iconBgColor: Colors.black.withAlpha(13),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const OffersScreen()),
-                ),
+            // 5. Special Offers — US-27: visible to all retailers
+            _buildOrderCard(
+              context: context,
+              color: const Color(0xFFDC2626),
+              icon: Icons.local_offer_outlined,
+              title: 'Special Offers',
+              subtitle: 'Exclusive bulk deals and combo offers just for you',
+              textColor: textColor,
+              iconBgColor: Colors.black.withAlpha(13),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const OffersScreen()),
               ),
-            if (_isPriority == true) const SizedBox(height: 16),
+            ),
+            const SizedBox(height: 16),
 
             const SizedBox(height: 8),
 

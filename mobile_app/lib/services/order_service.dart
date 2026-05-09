@@ -387,10 +387,18 @@ class OrderService {
         )
         .timeout(const Duration(seconds: 15));
     if (res.statusCode != 200 && res.statusCode != 201) {
-      final err = jsonDecode(res.body);
-      throw Exception(
-        err['message'] ?? 'Failed to place order: ${res.statusCode}',
-      );
+      try {
+        final err = jsonDecode(res.body);
+        throw Exception(
+          err['message'] ??
+              err['error'] ??
+              'Failed to place order: ${res.statusCode}',
+        );
+      } catch (_) {
+        throw Exception(
+          'Failed to place order: ${res.statusCode} - ${res.body}',
+        );
+      }
     }
   }
 

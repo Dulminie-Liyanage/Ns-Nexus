@@ -13,7 +13,7 @@ db.query(`
         OfferID INT AUTO_INCREMENT PRIMARY KEY,
         Title VARCHAR(100) NOT NULL,
         Description TEXT,
-        OfferType VARCHAR(20) DEFAULT 'bulk_discount',
+        OfferType VARCHAR(20) DEFAULT 'bulk_discount' CHECK (OfferType IN ('bulk_discount','combo')),
         ProductIDs TEXT,
         DiscountPercent DECIMAL(5,2) DEFAULT 0,
         MinOrderValue DECIMAL(10,2) DEFAULT 0,
@@ -55,12 +55,29 @@ router.get('/', async (req, res) => {
 router.get('/retailer/:id', async (req, res) => {
     const retailerId = req.params.id;
     try {
-        // Get active offers
+        // Get active offers with product details for combos
         const offers = await q(
             `SELECT * FROM bulk_offers
              WHERE IsActive = 1 AND (ExpiresAt IS NULL OR ExpiresAt > NOW())
              ORDER BY CreatedAt DESC`
         );
+
+        // Enrich combo offers with product names
+        for (const offer of offers) {
+            if (offer.OfferType === 'combo' && offer.ProductIDs) {
+                try {
+                    const ids = JSON.parse(offer.ProductIDs);
+                    if (ids.length > 0) {
+                        const placeholders = ids.map(() => '?').join(',');
+                        const products = await q(
+                            `SELECT ProductID, ProductName, Price, Unit FROM products WHERE ProductID IN (${placeholders})`,
+                            ids
+                        );
+                        offer.comboProducts = products;
+                    }
+                } catch (_) {}
+            }
+        }
 
         // Get retailer's most ordered products (combo suggestions)
         const combos = await q(

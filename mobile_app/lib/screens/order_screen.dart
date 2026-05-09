@@ -15,6 +15,12 @@ class OrderScreen extends StatefulWidget {
   /// US-27: Offer discount percentage
   final double offerDiscount;
 
+  /// US-27: Minimum order value to qualify for discount
+  final double offerMinValue;
+
+  /// US-27: Offer title shown to retailer
+  final String? offerTitle;
+
   /// US-27: Suggested products from combo
   final List<dynamic>? suggestedProducts;
 
@@ -26,6 +32,8 @@ class OrderScreen extends StatefulWidget {
     this.preloadedItems,
     this.templateName,
     this.offerDiscount = 0.0,
+    this.offerMinValue = 0.0,
+    this.offerTitle,
     this.suggestedProducts,
   });
 
@@ -112,11 +120,26 @@ class _OrderScreenState extends State<OrderScreen> {
     try {
       final products = await _productService.fetchAvailableProducts();
       if (!mounted) return;
+      // Sort: available + in-stock first, out of stock at bottom
+      final sorted = [...products];
+      sorted.sort((a, b) {
+        final aAvail = (a['IsAvailable'] == 1 || a['IsAvailable'] == true)
+            ? 1
+            : 0;
+        final bAvail = (b['IsAvailable'] == 1 || b['IsAvailable'] == true)
+            ? 1
+            : 0;
+        final aStock = int.tryParse(a['StockLevel']?.toString() ?? '0') ?? 0;
+        final bStock = int.tryParse(b['StockLevel']?.toString() ?? '0') ?? 0;
+        if (aAvail != bAvail) return bAvail - aAvail;
+        if ((aStock > 0) != (bStock > 0)) return bStock > 0 ? 1 : -1;
+        return 0;
+      });
+
       setState(() {
-        _products = products;
+        _products = sorted;
         _isLoading = false;
-        // US-19: If opened via reorder, pre-populate cart with previous quantities
-        // Only add items that still exist as available products
+        // US-19: Pre-fill from quick reorder
         if (widget.preFilledCart != null) {
           final availableIds = products
               .map((p) => (p['ProductID'] ?? p['id'] ?? '').toString())
@@ -124,6 +147,27 @@ class _OrderScreenState extends State<OrderScreen> {
           for (final entry in widget.preFilledCart!.entries) {
             if (availableIds.contains(entry.key) && entry.value > 0) {
               _cart[entry.key] = entry.value;
+            }
+          }
+        }
+        // US-26: Pre-fill from smart template
+        if (widget.preloadedItems != null &&
+            widget.preloadedItems!.isNotEmpty) {
+          for (final item in widget.preloadedItems!) {
+            final pid = item['productId']?.toString() ?? '';
+            final qty = int.tryParse(item['qty']?.toString() ?? '1') ?? 1;
+            if (pid.isNotEmpty && qty > 0) {
+              _cart[pid] = qty;
+            }
+          }
+        }
+        // US-27: Pre-fill from combo suggestions
+        if (widget.suggestedProducts != null &&
+            widget.suggestedProducts!.isNotEmpty) {
+          for (final p in widget.suggestedProducts!) {
+            final pid = (p['ProductID'] ?? p['productId'] ?? '').toString();
+            if (pid.isNotEmpty) {
+              _cart[pid] = 1;
             }
           }
         }
@@ -218,6 +262,15 @@ class _OrderScreenState extends State<OrderScreen> {
       }
     }
 
+    // US-27: Apply offer discount ONLY if minimum order value is met
+    final subtotal = tempPrice;
+    if (widget.offerDiscount > 0) {
+      if (widget.offerMinValue <= 0 || subtotal >= widget.offerMinValue) {
+        tempPrice = subtotal * (1 - widget.offerDiscount / 100);
+      }
+      // else: discount NOT applied — minimum not met
+    }
+
     setState(() {
       _currentTotalWeight = tempWeight;
       _currentTotalPrice = tempPrice;
@@ -283,10 +336,8 @@ class _OrderScreenState extends State<OrderScreen> {
 
     // Stock validation — prevent ordering more than available
     for (final entry in _cart.entries) {
-      final product = _products.firstWhere(
-        (p) => _getProductId(p) == entry.key,
-        orElse: () => null,
-      );
+      final matches = _products.where((p) => _getProductId(p) == entry.key);
+      final product = matches.isNotEmpty ? matches.first : null;
       if (product != null) {
         // Check if product is available
         if (product['IsAvailable'] == 0) {
@@ -705,6 +756,58 @@ class _OrderScreenState extends State<OrderScreen> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+                      if (widget.offerDiscount > 0)
+                        Builder(
+                          builder: (ctx) {
+                            // Calculate subtotal WITHOUT discount to check condition
+                            double sub = 0;
+                            for (var p in _products) {
+                              final id = _getProductId(p);
+                              if (_cart.containsKey(id) && _cart[id]! > 0) {
+                                final price =
+                                    double.tryParse(
+                                      (p['Price'] ?? p['price'])?.toString() ??
+                                          '0',
+                                    ) ??
+                                    0;
+                                sub += price * _cart[id]!;
+                              }
+                            }
+                            final qualifies =
+                                widget.offerMinValue <= 0 ||
+                                sub >= widget.offerMinValue;
+                            return Container(
+                              margin: const EdgeInsets.only(top: 2, bottom: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: qualifies
+                                    ? Colors.green.shade50
+                                    : Colors.orange.shade50,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: qualifies
+                                      ? Colors.green.shade200
+                                      : Colors.orange.shade200,
+                                ),
+                              ),
+                              child: Text(
+                                qualifies
+                                    ? '${widget.offerDiscount.toInt()}% offer applied ✓'
+                                    : 'Add LKR ${(widget.offerMinValue - sub).toStringAsFixed(0)} more for ${widget.offerDiscount.toInt()}% off',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: qualifies
+                                      ? Colors.green.shade700
+                                      : Colors.orange.shade800,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       const SizedBox(height: 2),
                       Text(
                         'LKR ${_currentTotalPrice.toStringAsFixed(2)}',
