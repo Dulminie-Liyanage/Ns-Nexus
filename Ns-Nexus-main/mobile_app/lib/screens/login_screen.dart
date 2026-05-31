@@ -9,6 +9,7 @@ import 'delivery_schedule_screen.dart';
 import 'driver_profile_screen.dart';
 import 'shipment_management_screen.dart';
 import 'audit_trail_screen.dart';
+import 'driver_performance_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -59,6 +60,16 @@ class _LoginScreenState extends State<LoginScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('userName', user['name']?.toString() ?? '');
       await prefs.setString('userEmail', email);
+      // Save priority status for retailers — used to show/hide urgent order card
+      // Backend returns priorityStatus as bool (true/false) — convert to '1'/'0'
+      final ps = user['PriorityStatus'] ?? user['priorityStatus'] ?? false;
+      await prefs.setString(
+        'priorityStatus',
+        (ps == true || ps == 1) ? '1' : '0',
+      );
+      // Save userId so notification and analytics screens can use it
+      final uid = user['UserID'] ?? user['userId'] ?? user['id'] ?? '';
+      await prefs.setString('userId', uid.toString());
 
       if (!mounted) return;
 
@@ -360,12 +371,15 @@ class _LogisticsHomeScreenState extends State<LogisticsHomeScreen> {
     final tabs = [
       const ShipmentManagementScreen(),
       const AuditTrailScreen(onlyShipped: true), // 3PL sees stage 4+ only
+      const DriverPerformanceScreen(), // US-25 driver analytics
     ];
     return Scaffold(
       body: IndexedStack(index: _currentIndex, children: tabs),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (i) => setState(() => _currentIndex = i),
+        onTap: (i) {
+          if (i >= 0 && i < 3) setState(() => _currentIndex = i);
+        },
         selectedItemColor: const Color(0xFF0056B3),
         unselectedItemColor: Colors.grey.shade400,
         type: BottomNavigationBarType.fixed,
@@ -377,6 +391,10 @@ class _LogisticsHomeScreenState extends State<LogisticsHomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.track_changes_outlined),
             label: 'Order Tracking',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.bar_chart_outlined),
+            label: 'Performance',
           ),
         ],
       ),

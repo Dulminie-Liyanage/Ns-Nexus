@@ -44,6 +44,9 @@ router.post('/', (req, res) => {
 });
 
 // Internal helper to place an order after priority check
+// PO-01: Routes through 3PL distributor
+// PO-03: Auto-approves normal orders
+// PO-05: Flags anomalous orders for Sales Manager
 function _placeOrder(req, res, retailer_id, delivery_date, is_urgent, items) {
 
     const orderQuery = 'INSERT INTO orders (RetailerID, Status, IsUrgent, DeliveryDate) VALUES (?, ?, ?, ?)';
@@ -64,28 +67,87 @@ function _placeOrder(req, res, retailer_id, delivery_date, is_urgent, items) {
 
             let totalPrice = 0;
             let totalWeight = 0;
+            const totalQty = items.reduce((s, i) => s + (parseInt(i.qty_requested) || 0), 0);
 
             const itemValues = items.map(item => {
                 const pData = productMap[item.product_id] || { price: 0, weight: 0 };
                 totalPrice += pData.price * item.qty_requested;
                 totalWeight += pData.weight * item.qty_requested;
-                return [orderID, item.product_id, item.qty_requested, 0, pData.price];
+                return [orderID, item.product_id, item.qty_requested, item.qty_requested, pData.price];
             });
 
             const itemQuery = 'INSERT INTO order_items (OrderID, ProductID, QtyRequested, QtyApproved, UnitPrice) VALUES ?';
             db.query(itemQuery, [itemValues], (err2) => {
                 if (err2) return res.status(500).json({ message: 'Error saving order items', error: err2 });
 
-                db.query('UPDATE orders SET TotalPrice = ?, TotalWeight = ? WHERE OrderID = ?',
-                    [totalPrice, totalWeight, orderID], (updateErr) => {
-                        if (updateErr) console.error('Totals update failed', updateErr);
-                        return res.status(201).json({
-                            message: 'Order placed successfully',
-                            order_id: orderID,
-                            total_price: totalPrice,
-                            total_weight: totalWeight
-                        });
-                    });
+                // PO-05: Check if this order is anomalous vs retailer's historical average
+                db.query(
+                    `SELECT COALESCE(AVG(o.TotalWeight), 0) AS avgWeight,
+                            COALESCE(AVG(
+                                (SELECT SUM(oi2.QtyRequested) FROM order_items oi2 WHERE oi2.OrderID = o.OrderID)
+                            ), 0) AS avgQty
+                     FROM orders o
+                     WHERE o.RetailerID = ? AND o.Status NOT IN ('rejected','flagged_for_review')
+                     AND o.CreatedAt >= DATE_SUB(NOW(), INTERVAL 90 DAY)`,
+                    [retailer_id], (avgErr, avgRows) => {
+                        const avgQty = parseFloat(avgRows?.[0]?.avgQty) || 0;
+                        const isFlagged = avgQty > 0 && totalQty > avgQty * 3;
+                        const newStatus = isFlagged ? 'flagged_for_review' : 'approved';
+                        const flagReason = isFlagged
+                            ? `Order qty (${totalQty}) is ${Math.round(totalQty/avgQty)}x above retailer avg (${Math.round(avgQty)})`
+                            : null;
+
+                        // PO-01: Find assigned 3PL distributor for this retailer
+                        db.query(
+                            `SELECT DistributorID FROM retailer_distributor_map WHERE RetailerID = ? LIMIT 1`,
+                            [retailer_id], (mapErr, mapRows) => {
+                                const distributorId = mapRows?.[0]?.DistributorID || null;
+
+                                db.query(
+                                    `UPDATE orders SET
+                                        Status = ?,
+                                        CurrentStage = 2,
+                                        TotalPrice = ?,
+                                        TotalWeight = ?,
+                                        AutoApprovedAt = NOW(),
+                                        IsFlagged = ?,
+                                        FlagReason = ?,
+                                        FlaggedAt = ?,
+                                        DriverID = ?
+                                     WHERE OrderID = ?`,
+                                    [
+                                        newStatus, totalPrice, totalWeight,
+                                        isFlagged ? 1 : 0,
+                                        flagReason,
+                                        isFlagged ? new Date() : null,
+                                        distributorId,
+                                        orderID
+                                    ], (updateErr) => {
+                                        if (updateErr) console.error('Order update failed', updateErr);
+
+                                        // Notify retailer
+                                        if (!isFlagged) {
+                                            logNotification(retailer_id, orderID, newStatus);
+                                        }
+
+                                        return res.status(201).json({
+                                            message: isFlagged
+                                                ? 'Order flagged for review due to unusual quantity'
+                                                : 'Order placed and auto-approved',
+                                            order_id: orderID,
+                                            status: newStatus,
+                                            isFlagged,
+                                            flagReason,
+                                            total_price: totalPrice,
+                                            total_weight: totalWeight,
+                                            distributorId,
+                                        });
+                                    }
+                                );
+                            }
+                        );
+                    }
+                );
             });
         });
     });
@@ -689,6 +751,168 @@ router.get('/retailer/:id/templates', (req, res) => {
             ].filter(t => t.items && t.items.length > 0);
 
             res.json({ templates });
+        }
+    );
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PO-05: Sales Manager flagged orders queue
+// GET /orders/flagged — all orders flagged for review
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/flagged', (req, res) => {
+    db.query(
+        `SELECT o.*, u.Name as RetailerName, u.ShopName, u.District
+         FROM orders o
+         JOIN users u ON o.RetailerID = u.UserID
+         WHERE o.IsFlagged = 1 AND o.Status = 'flagged_for_review'
+         ORDER BY o.FlaggedAt DESC`,
+        [], (err, rows) => {
+            if (err) return res.status(500).json({ message: 'DB error', error: err.message });
+            res.json({ orders: rows || [] });
+        }
+    );
+});
+
+// PUT /orders/:id/release — Sales Manager releases flagged order
+router.put('/:id/release', (req, res) => {
+    const { releasedBy } = req.body;
+    db.query(
+        `UPDATE orders SET Status = 'approved', CurrentStage = 2,
+         IsFlagged = 0, ReleasedAt = NOW(), ReleasedBy = ?
+         WHERE OrderID = ? AND Status = 'flagged_for_review'`,
+        [releasedBy || null, req.params.id], (err, result) => {
+            if (err) return res.status(500).json({ message: 'DB error', error: err.message });
+            if (result.affectedRows === 0) return res.status(404).json({ message: 'Order not found or not flagged' });
+
+            // Notify retailer
+            db.query('SELECT RetailerID FROM orders WHERE OrderID = ?', [req.params.id], (e, r) => {
+                if (!e && r?.[0]) logNotification(r[0].RetailerID, req.params.id, 'approved');
+            });
+            res.json({ message: 'Order released and approved' });
+        }
+    );
+});
+
+// PUT /orders/:id/hold — Sales Manager holds/rejects flagged order
+router.put('/:id/hold', (req, res) => {
+    const { reason } = req.body;
+    db.query(
+        `UPDATE orders SET Status = 'rejected', CurrentStage = 2,
+         RejectionReason = ?, rejection_reason = ?
+         WHERE OrderID = ? AND Status = 'flagged_for_review'`,
+        [reason || 'Held by Sales Manager', reason || 'Held by Sales Manager', req.params.id],
+        (err, result) => {
+            if (err) return res.status(500).json({ message: 'DB error', error: err.message });
+            res.json({ message: 'Order held' });
+        }
+    );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PO-01: 3PL Distributor order queue
+// GET /orders/distributor/:distributorId — orders assigned to this 3PL
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/distributor/:distributorId', (req, res) => {
+    db.query(
+        `SELECT o.*, u.Name as RetailerName, u.ShopName, u.Address, u.District
+         FROM orders o
+         JOIN users u ON o.RetailerID = u.UserID
+         WHERE o.DriverID = ? AND o.Status NOT IN ('rejected')
+         ORDER BY o.IsUrgent DESC, o.CreatedAt DESC`,
+        [req.params.distributorId], (err, rows) => {
+            if (err) return res.status(500).json({ message: 'DB error', error: err.message });
+            res.json({ orders: rows || [] });
+        }
+    );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PO-03: Auto stage advance — triggered by backend events
+// PUT /orders/:id/auto-advance — called by system when an event happens
+// ─────────────────────────────────────────────────────────────────────────────
+router.put('/:id/auto-advance', (req, res) => {
+    const { event } = req.body;
+    // event: 'packing_started' | 'shipped' | 'out_for_delivery' | 'delivered'
+    const eventStageMap = {
+        'packing_started':  { status: 'packing',          stage: 3, col: 'PackingStartedAt' },
+        'shipped':          { status: 'in_3pl_transit',   stage: 4, col: 'ShippedAt' },
+        'out_for_delivery': { status: 'out_for_delivery', stage: 6, col: null },
+        'delivered':        { status: 'delivered',        stage: 7, col: 'DeliveredAt' },
+    };
+    const mapping = eventStageMap[event];
+    if (!mapping) return res.status(400).json({ message: 'Invalid event' });
+
+    const colUpdate = mapping.col ? `, ${mapping.col} = NOW()` : '';
+    db.query(
+        `UPDATE orders SET Status = ?, CurrentStage = ? ${colUpdate} WHERE OrderID = ?`,
+        [mapping.status, mapping.stage, req.params.id], (err, result) => {
+            if (err) return res.status(500).json({ message: 'DB error', error: err.message });
+
+            // Auto-notify retailer
+            db.query('SELECT RetailerID FROM orders WHERE OrderID = ?', [req.params.id], (e, r) => {
+                if (!e && r?.[0]) logNotification(r[0].RetailerID, req.params.id, mapping.status);
+            });
+            res.json({ message: 'Stage auto-advanced', status: mapping.status, stage: mapping.stage });
+        }
+    );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PO-02: Supply disruptions
+// GET /orders/disruptions — active disruptions for retailer region
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/disruptions', (req, res) => {
+    const { regionId } = req.query;
+    db.query(
+        `CREATE TABLE IF NOT EXISTS supply_disruptions (
+            DisruptionID INT AUTO_INCREMENT PRIMARY KEY,
+            Title VARCHAR(100) NOT NULL,
+            Message TEXT NOT NULL,
+            DisruptionType VARCHAR(20) DEFAULT 'other',
+            RegionID INT NULL,
+            Severity VARCHAR(10) DEFAULT 'medium',
+            IsActive TINYINT DEFAULT 1,
+            CreatedBy INT,
+            CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ExpiresAt DATETIME NULL
+        )`, [], () => {}
+    );
+    db.query(
+        `SELECT * FROM supply_disruptions
+         WHERE IsActive = 1
+         AND (ExpiresAt IS NULL OR ExpiresAt > NOW())
+         AND (RegionID IS NULL OR RegionID = ?)
+         ORDER BY CreatedAt DESC`,
+        [regionId || null], (err, rows) => {
+            if (err) return res.json({ disruptions: [] });
+            res.json({ disruptions: rows || [] });
+        }
+    );
+});
+
+// POST /orders/disruptions — WM/Admin creates disruption alert
+router.post('/disruptions', (req, res) => {
+    const { title, message, disruptionType, regionId, severity, expiresAt, createdBy } = req.body;
+    if (!title || !message) return res.status(400).json({ message: 'Title and message required' });
+    db.query(
+        `INSERT INTO supply_disruptions (Title, Message, DisruptionType, RegionID, Severity, ExpiresAt, CreatedBy)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [title, message, disruptionType || 'other', regionId || null,
+         severity || 'medium', expiresAt || null, createdBy || null],
+        (err, result) => {
+            if (err) return res.status(500).json({ message: 'DB error', error: err.message });
+            res.json({ message: 'Disruption alert created', id: result.insertId });
+        }
+    );
+});
+
+// DELETE /orders/disruptions/:id — deactivate disruption
+router.delete('/disruptions/:id', (req, res) => {
+    db.query('UPDATE supply_disruptions SET IsActive = 0 WHERE DisruptionID = ?',
+        [req.params.id], (err) => {
+            if (err) return res.status(500).json({ message: 'DB error' });
+            res.json({ message: 'Disruption deactivated' });
         }
     );
 });

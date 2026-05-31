@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'wm_dashboard_tab.dart';
+import 'package:ns_nexus_mobile_app/screens/analiytics_dashboard_screen.dart';
+import 'package:ns_nexus_mobile_app/screens/audit_trail_screen.dart';
+import 'package:ns_nexus_mobile_app/screens/daily_report_list_screen.dart';
+import 'package:ns_nexus_mobile_app/screens/wm_dashboard_tab.dart';
 import 'inventory_tab.dart';
 import 'warehouse_orders_screen.dart';
-import 'audit_trail_screen.dart';
-import 'daily_report_list_screen.dart';
-import 'analiytics_dashboard_screen.dart';
-import 'offers_screen.dart';
+import 'disruption_banner.dart';
 import 'login_screen.dart';
 import '../services/auth_service.dart';
 
@@ -46,7 +46,7 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
       case 5:
         return const AnalyticsDashboardScreen(role: 'warehouse_manager');
       case 6:
-        return const ManageOffersScreen();
+        return const ManageDisruptionsScreen();
       default:
         return const SizedBox.shrink();
     }
@@ -60,11 +60,8 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         toolbarHeight: 80,
-        title: Image.asset(
-          'assets/images/nestle_logo.png',
-          height: 50,
-          fit: BoxFit.contain,
-        ),
+        title: Image.asset('assets/images/nestle_logo.png',
+            height: 50, fit: BoxFit.contain),
         actions: [
           const CircleAvatar(
             backgroundColor: Color(0xFFE2E8F0),
@@ -76,10 +73,8 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
             onPressed: () async {
               await AuthService().logout();
               if (!mounted) return;
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              );
+              Navigator.pushReplacement(context,
+                  MaterialPageRoute(builder: (_) => const LoginScreen()));
             },
           ),
           const SizedBox(width: 8),
@@ -95,40 +90,16 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
         type: BottomNavigationBarType.fixed,
         selectedItemColor: const Color(0xFFD4A017),
         unselectedItemColor: Colors.grey.shade400,
-        selectedLabelStyle: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-        ),
+        selectedLabelStyle:
+            const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
         unselectedLabelStyle: const TextStyle(fontSize: 10),
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.grid_view_rounded),
-            label: 'Overview',
-          ),
+              icon: Icon(Icons.inventory_2_outlined), label: 'Inventory'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.inventory_2_outlined),
-            label: 'Products',
-          ),
+              icon: Icon(Icons.local_shipping_outlined), label: 'Orders'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.local_shipping_outlined),
-            label: 'Orders',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.timeline_outlined),
-            label: 'Audit',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart_outlined),
-            label: 'Report',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.analytics_outlined),
-            label: 'Analytics',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.local_offer_outlined),
-            label: 'Offers',
-          ),
+              icon: Icon(Icons.add_alert_outlined), label: 'Disruptions'),
         ],
       ),
     );

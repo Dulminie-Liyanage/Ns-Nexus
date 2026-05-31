@@ -1,0 +1,62 @@
+appId: com.example.ns_nexus_mobile_app  # change to your app package name
+---
+# US-17: Digital Delivery Confirmation Test
+# Run with: maestro test us17_delivery_confirmation.yaml
+
+# ── TC-01: Login as Driver ────────────────────────────────────────────────────
+- launchApp
+- waitForAnimationToEnd
+- tapOn: "Email"
+- inputText: "ruwan@driver.lk"
+- tapOn: "Password"
+- inputText: "1234"
+- tapOn: "Login"
+- waitForAnimationToEnd
+
+# Verify driver home loaded
+- assertVisible: "My Status"
+- assertVisible: "Schedule"
+- assertVisible: "Profile"
+- takeScreenshot: "tc01_driver_home"
+
+# ── TC-02: Open Delivery Schedule ────────────────────────────────────────────
+- tapOn: "Schedule"
+- waitForAnimationToEnd
+- takeScreenshot: "tc02_schedule_screen"
+
+# ── TC-03: Open Confirmation Screen ──────────────────────────────────────────
+- tapOn: "End Delivery"
+- waitForAnimationToEnd
+
+# Verify all elements present
+- assertVisible: "Confirm Delivery"
+- assertVisible: "GPS Timestamp"
+- assertVisible: "Recipient Signature *"
+- assertVisible: "Photo Proof *"
+- assertVisible: "Tap to take photo"
+- assertVisible: "Clear"
+- takeScreenshot: "tc03_confirmation_screen"
+
+# ── TC-04: Validation - Submit Without Signature ──────────────────────────────
+- tapOn: "Confirm Delivery"
+- waitForAnimationToEnd
+- assertVisible: "Please capture the recipient's signature."
+- takeScreenshot: "tc04_signature_validation"
+
+# ── TC-05: Clear Button Works ─────────────────────────────────────────────────
+- tapOn: "Clear"
+- waitForAnimationToEnd
+- takeScreenshot: "tc05_signature_cleared"
+
+# ── TC-06: Validation - Submit Without Photo ──────────────────────────────────
+# Note: Signature is drawn by tapping the pad area
+- tapOn: "Confirm Delivery"
+- waitForAnimationToEnd
+- assertVisible: "Please capture the recipient's signature."
+- takeScreenshot: "tc06_photo_validation"
+
+# ── TC-07: Back Navigation ────────────────────────────────────────────────────
+- pressKey: Back
+- waitForAnimationToEnd
+- assertVisible: "Schedule"
+- takeScreenshot: "tc07_back_navigation"

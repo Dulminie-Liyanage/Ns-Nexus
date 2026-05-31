@@ -116,14 +116,29 @@ class DeliveryStop {
     required this.stopNumber,
   });
 
-  factory DeliveryStop.fromJson(Map<String, dynamic> json) {
+  factory DeliveryStop.fromJson(Map<String, dynamic> json, {int index = 0}) {
+    // OrderID comes as integer from MariaDB — convert to string
+    final orderId =
+        json['OrderID']?.toString() ?? json['orderId']?.toString() ?? '';
     return DeliveryStop(
-      orderId: json['OrderID']?.toString() ?? json['orderId']?.toString() ?? '',
-      retailerName: json['RetailerName'] ?? json['retailerName'] ?? '',
+      orderId: orderId,
+      retailerName:
+          json['RetailerName'] ??
+          json['ShopName'] ??
+          json['retailerName'] ??
+          '',
       address: json['Address'] ?? json['address'] ?? '',
       phone: json['Phone'] ?? json['phone'] ?? '',
-      status: json['Status'] ?? json['status'] ?? 'pending',
-      stopNumber: json['stopNumber'] ?? json['stop_number'] ?? 0,
+      status:
+          json['DeliveryStatus'] ??
+          json['Status'] ??
+          json['status'] ??
+          'assigned',
+      // stopNumber from DB or fallback to list index + 1
+      stopNumber:
+          int.tryParse(json['stopNumber']?.toString() ?? '') ??
+          int.tryParse(json['stop_number']?.toString() ?? '') ??
+          index + 1,
     );
   }
 }
@@ -133,6 +148,7 @@ class DailyReport {
   final int approvedOrders;
   final int rejectedOrders;
   final int pendingOrders;
+  final int deliveredOrders;
   final double totalValue;
   final List<Map<String, dynamic>> ordersByRetailer;
   final List<Map<String, dynamic>> lowStockItems;
@@ -143,6 +159,7 @@ class DailyReport {
     required this.approvedOrders,
     required this.rejectedOrders,
     required this.pendingOrders,
+    required this.deliveredOrders,
     required this.totalValue,
     required this.ordersByRetailer,
     required this.lowStockItems,
@@ -156,6 +173,7 @@ class DailyReport {
       approvedOrders: safeInt(json['approvedOrders']),
       rejectedOrders: safeInt(json['rejectedOrders']),
       pendingOrders: safeInt(json['pendingOrders']),
+      deliveredOrders: safeInt(json['deliveredOrders']),
       totalValue: double.tryParse(json['totalValue']?.toString() ?? '0') ?? 0.0,
       ordersByRetailer: List<Map<String, dynamic>>.from(
         json['ordersByRetailer'] ?? [],
@@ -171,9 +189,14 @@ class DailyReport {
 class OrderService {
   static const String _base = 'http://15.235.160.20:25568';
 
+  // Cache SharedPreferences so it is only loaded once per session
+  static Future<SharedPreferences> _getPrefs() async {
+    return await SharedPreferences.getInstance();
+  }
+
   Future<String> _token() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('sessionToken') ?? '';
+    return prefs.getString('sessionToken') ?? prefs.getString('token') ?? '';
   }
 
   Map<String, String> _headers(String token) => {
@@ -185,13 +208,15 @@ class OrderService {
   // GET /orders/retailer/:userId
   // Response: { orders: [...] }
   Future<List<dynamic>> fetchOrderHistory() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _getPrefs();
     final userId = prefs.getString('userId') ?? '';
     final token = await _token();
-    final res = await http.get(
-      Uri.parse('$_base/orders/retailer/$userId'),
-      headers: _headers(token),
-    );
+    final res = await http
+        .get(
+          Uri.parse('$_base/orders/retailer/$userId'),
+          headers: _headers(token),
+        )
+        .timeout(const Duration(seconds: 15));
     if (res.statusCode == 200) {
       final data = jsonDecode(res.body);
       return (data['orders'] ?? data) as List<dynamic>;
@@ -204,15 +229,93 @@ class OrderService {
   // Response: { items: [...] }
   Future<List<dynamic>> fetchOrderItems(dynamic orderId) async {
     final token = await _token();
-    final res = await http.get(
-      Uri.parse('$_base/orders/$orderId/items'),
-      headers: _headers(token),
-    );
+    final res = await http
+        .get(
+          Uri.parse('$_base/orders/$orderId/items'),
+          headers: _headers(token),
+        )
+        .timeout(const Duration(seconds: 15));
     if (res.statusCode == 200) {
       final data = jsonDecode(res.body);
       return (data['items'] ?? data) as List<dynamic>;
     }
     throw Exception('Failed to load order items: ${res.statusCode}');
+  }
+
+  // ── SPRINT 3 US-19: Quick Order ─────────────────────────────────────────────
+  // Fetches the last approved order for this retailer and returns:
+  // { 'orderId': id, 'cart': Map<productId, qty> }
+  // Uses QtyRequested (retailer's original intent).
+  // If no approved order exists, returns empty cart so QuickOrderScreen
+  // still opens and shows all products for a fresh order.
+  Future<Map<String, dynamic>> fetchLastApprovedOrderCart() async {
+    try {
+      final history = await fetchOrderHistory();
+      // Find the most recent approved/delivered order
+      final approved = history.where((o) {
+        final s = (o['Status'] ?? '').toString().toLowerCase();
+        return [
+          'approved',
+          'partially_approved',
+          'delivered',
+          'packing',
+          'in_3pl_transit',
+          'ready_to_ship',
+          'out_for_delivery',
+        ].contains(s);
+      }).toList();
+
+      if (approved.isEmpty) return {'orderId': null, 'cart': <String, int>{}};
+
+      // Sort by OrderID descending to get latest
+      approved.sort((a, b) {
+        final aId = int.tryParse((a['OrderID'] ?? 0).toString()) ?? 0;
+        final bId = int.tryParse((b['OrderID'] ?? 0).toString()) ?? 0;
+        return bId.compareTo(aId);
+      });
+
+      final lastOrder = approved.first;
+      final orderId = lastOrder['OrderID'];
+      final items = await fetchOrderItems(orderId);
+
+      final Map<String, int> cart = {};
+      for (final item in items) {
+        final productId = (item['ProductID'] ?? item['productId'] ?? '')
+            .toString();
+        final qty =
+            int.tryParse(
+              (item['QtyRequested'] ?? item['Quantity'] ?? 0).toString(),
+            ) ??
+            0;
+        if (productId.isNotEmpty && qty > 0) cart[productId] = qty;
+      }
+      return {'orderId': orderId, 'cart': cart};
+    } catch (_) {
+      return {'orderId': null, 'cart': <String, int>{}};
+    }
+  }
+
+  // ── SPRINT 3 US-19: Quick Reorder (from history button) ──────────────────────
+  // Fetches order items and returns them as a Map<productId, qty>
+  // so OrderScreen can pre-populate the cart with previous quantities.
+  // Current prices come from the products endpoint (already loaded in OrderScreen).
+  Future<Map<String, int>> fetchReorderCart(dynamic orderId) async {
+    final items = await fetchOrderItems(orderId);
+    final Map<String, int> cart = {};
+    for (final item in items) {
+      final productId = (item['ProductID'] ?? item['productId'] ?? '')
+          .toString();
+      // Use QtyRequested — the retailer's original intent, not WM-approved qty
+      final qty =
+          int.tryParse(
+            (item['QtyRequested'] ?? item['Quantity'] ?? 0).toString(),
+          ) ??
+          0;
+      if (productId.isNotEmpty && qty > 0) {
+        cart[productId] = qty;
+      }
+    }
+    return cart;
   }
 
   // ── SPRINT 1: order_review_screen.dart ──────────────────────────────────────
@@ -228,11 +331,13 @@ class OrderService {
     final Map<String, dynamic> body = {'status': status};
     if (items != null) body['items'] = items;
     if (rejectionReason != null) body['rejection_reason'] = rejectionReason;
-    final res = await http.put(
-      Uri.parse('$_base/orders/$orderId'),
-      headers: _headers(token),
-      body: jsonEncode(body),
-    );
+    final res = await http
+        .put(
+          Uri.parse('$_base/orders/$orderId'),
+          headers: _headers(token),
+          body: jsonEncode(body),
+        )
+        .timeout(const Duration(seconds: 15));
     if (res.statusCode != 200) {
       final err = jsonDecode(res.body);
       throw Exception(
@@ -245,13 +350,17 @@ class OrderService {
   // GET /users/:id/priority
   Future<bool> checkPriorityStatus(String userId) async {
     final token = await _token();
-    final res = await http.get(
-      Uri.parse('$_base/users/$userId/priority'),
-      headers: _headers(token),
-    );
+    final res = await http
+        .get(
+          Uri.parse('$_base/users/$userId/priority'),
+          headers: _headers(token),
+        )
+        .timeout(const Duration(seconds: 15));
     if (res.statusCode == 200) {
       final data = jsonDecode(res.body);
-      return data['isPriority'] == true;
+      // Handle both bool true and number 1 from backend
+      final ps = data['isPriority'];
+      return ps == true || ps == 1 || ps.toString() == '1';
     }
     return false;
   }
@@ -265,21 +374,31 @@ class OrderService {
     dynamic isUrgent,
   ) async {
     final token = await _token();
-    final res = await http.post(
-      Uri.parse('$_base/orders'),
-      headers: _headers(token),
-      body: jsonEncode({
-        'retailer_id': retailerId,
-        'items': items,
-        'delivery_date': deliveryDate,
-        'is_urgent': isUrgent,
-      }),
-    );
+    final res = await http
+        .post(
+          Uri.parse('$_base/orders'),
+          headers: _headers(token),
+          body: jsonEncode({
+            'retailer_id': retailerId,
+            'items': items,
+            'delivery_date': deliveryDate,
+            'is_urgent': isUrgent,
+          }),
+        )
+        .timeout(const Duration(seconds: 15));
     if (res.statusCode != 200 && res.statusCode != 201) {
-      final err = jsonDecode(res.body);
-      throw Exception(
-        err['message'] ?? 'Failed to place order: ${res.statusCode}',
-      );
+      try {
+        final err = jsonDecode(res.body);
+        throw Exception(
+          err['message'] ??
+              err['error'] ??
+              'Failed to place order: ${res.statusCode}',
+        );
+      } catch (_) {
+        throw Exception(
+          'Failed to place order: ${res.statusCode} - ${res.body}',
+        );
+      }
     }
   }
 
@@ -291,10 +410,9 @@ class OrderService {
     final query = (initialFilter != null && initialFilter.isNotEmpty)
         ? '?status=$initialFilter'
         : '';
-    final res = await http.get(
-      Uri.parse('$_base/orders$query'),
-      headers: _headers(token),
-    );
+    final res = await http
+        .get(Uri.parse('$_base/orders$query'), headers: _headers(token))
+        .timeout(const Duration(seconds: 15));
     if (res.statusCode == 200) {
       final data = jsonDecode(res.body);
       return (data['orders'] ?? data) as List<dynamic>;
@@ -332,15 +450,12 @@ class OrderService {
   }
 
   // ── Driver assignment screen — orders approved but no driver yet (stage 2-3)
+  // Driver assignment screen — only approved orders (WM approved, no driver yet)
   Future<List<OrderModel>> getApprovedOrders() async {
     final orders = await fetchAllOrders();
     return orders
         .map((e) => OrderModel.fromJson(e))
-        .where(
-          (o) =>
-              o.status.toLowerCase() == 'approved' ||
-              o.status.toLowerCase() == 'packing',
-        )
+        .where((o) => o.status.toLowerCase() == 'approved')
         .toList();
   }
 
@@ -366,11 +481,16 @@ class OrderService {
     required String vehicleType,
   }) async {
     final token = await _token();
-    final res = await http.post(
-      Uri.parse('$_base/orders/$orderId/next-stage'),
-      headers: _headers(token),
-      body: jsonEncode({'driver_id': driverId, 'vehicle_type': vehicleType}),
-    );
+    final res = await http
+        .post(
+          Uri.parse('$_base/orders/$orderId/next-stage'),
+          headers: _headers(token),
+          body: jsonEncode({
+            'driver_id': driverId,
+            'vehicle_type': vehicleType,
+          }),
+        )
+        .timeout(const Duration(seconds: 15));
     if (res.statusCode != 200) {
       throw Exception('Failed to assign driver: ${res.statusCode}');
     }
@@ -379,17 +499,23 @@ class OrderService {
   // ── SPRINT 2: delivery_schedule_screen.dart ──────────────────────────────────
   // GET /orders/driver/:userId  (new backend route needed)
   Future<List<DeliveryStop>> getTodayStops() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await _getPrefs();
     final userId = prefs.getString('userId') ?? '';
     final token = await _token();
-    final res = await http.get(
-      Uri.parse('$_base/orders/driver/$userId'),
-      headers: _headers(token),
-    );
+    final res = await http
+        .get(
+          Uri.parse('$_base/orders/driver/$userId'),
+          headers: _headers(token),
+        )
+        .timeout(const Duration(seconds: 15));
     if (res.statusCode == 200) {
       final data = jsonDecode(res.body);
       final List list = (data['orders'] ?? data) as List;
-      return list.map((e) => DeliveryStop.fromJson(e)).toList();
+      return list
+          .asMap()
+          .entries
+          .map((e) => DeliveryStop.fromJson(e.value, index: e.key))
+          .toList();
     }
     throw Exception('Failed to load stops: ${res.statusCode}');
   }
@@ -398,11 +524,13 @@ class OrderService {
   // POST /orders/:id/next-stage
   Future<void> markDelivered(String orderId) async {
     final token = await _token();
-    final res = await http.post(
-      Uri.parse('$_base/orders/$orderId/next-stage'),
-      headers: _headers(token),
-      body: jsonEncode({'status': 'delivered'}),
-    );
+    final res = await http
+        .post(
+          Uri.parse('$_base/orders/$orderId/next-stage'),
+          headers: _headers(token),
+          body: jsonEncode({'status': 'delivered'}),
+        )
+        .timeout(const Duration(seconds: 15));
     if (res.statusCode != 200) {
       throw Exception('Failed to mark delivered: ${res.statusCode}');
     }
@@ -411,10 +539,12 @@ class OrderService {
   // ── SPRINT 2: audit_trail_screen.dart ───────────────────────────────────────
   Future<OrderModel> getOrderWithAudit(String orderId) async {
     final token = await _token();
-    final res = await http.get(
-      Uri.parse('$_base/orders/$orderId/items'),
-      headers: _headers(token),
-    );
+    final res = await http
+        .get(
+          Uri.parse('$_base/orders/$orderId/items'),
+          headers: _headers(token),
+        )
+        .timeout(const Duration(seconds: 15));
     if (res.statusCode == 200) {
       final data = jsonDecode(res.body);
       return OrderModel.fromJson(data);
@@ -431,11 +561,13 @@ class OrderService {
   // POST /orders/:id/next-stage
   Future<void> advanceStage(String orderId) async {
     final token = await _token();
-    final res = await http.post(
-      Uri.parse('$_base/orders/$orderId/next-stage'),
-      headers: _headers(token),
-      body: jsonEncode({}),
-    );
+    final res = await http
+        .post(
+          Uri.parse('$_base/orders/$orderId/next-stage'),
+          headers: _headers(token),
+          body: jsonEncode({}),
+        )
+        .timeout(const Duration(seconds: 15));
     if (res.statusCode != 200) {
       final err = jsonDecode(res.body);
       throw Exception(
@@ -448,10 +580,9 @@ class OrderService {
   // GET /orders/report/daily  (new backend route needed)
   Future<DailyReport> getDailyReport() async {
     final token = await _token();
-    final res = await http.get(
-      Uri.parse('$_base/orders/report/daily'),
-      headers: _headers(token),
-    );
+    final res = await http
+        .get(Uri.parse('$_base/orders/report/daily'), headers: _headers(token))
+        .timeout(const Duration(seconds: 15));
     if (res.statusCode == 200) {
       return DailyReport.fromJson(jsonDecode(res.body));
     }

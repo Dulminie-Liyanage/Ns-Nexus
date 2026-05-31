@@ -4,6 +4,8 @@ import 'inventory_tab.dart';
 import 'warehouse_orders_screen.dart';
 import 'audit_trail_screen.dart';
 import 'daily_report_list_screen.dart';
+import 'analiytics_dashboard_screen.dart';
+import 'offers_screen.dart';
 import 'login_screen.dart';
 import '../services/auth_service.dart';
 
@@ -41,6 +43,10 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
         return const AuditTrailScreen();
       case 4:
         return const DailyReportListScreen();
+      case 5:
+        return const AnalyticsDashboardScreen(role: 'warehouse_manager');
+      case 6:
+        return const ManageOffersScreen();
       default:
         return const SizedBox.shrink();
     }
@@ -114,6 +120,14 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.bar_chart_outlined),
             label: 'Report',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.analytics_outlined),
+            label: 'Analytics',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.local_offer_outlined),
+            label: 'Offers',
           ),
         ],
       ),

@@ -32,12 +32,16 @@ router.get('/', (req, res) => {
 // POST /users — create new user (admin)
 router.post('/', (req, res) => {
     const { firstName, lastName, email, phone, role, priorityStatus } = req.body;
+    const allowedRoles = ['retailer','warehouse_manager','driver','3pl_manager','admin','sales_manager'];
     if (!firstName || !email || !role) {
         return res.status(400).json({ message: 'Missing required fields' });
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
+    }
+    if (!allowedRoles.includes(role)) {
+        return res.status(400).json({ message: `Invalid role: ${role}. Allowed: ${allowedRoles.join(', ')}` });
     }
     const name = (firstName + ' ' + (lastName || '')).trim();
 

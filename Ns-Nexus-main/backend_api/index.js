@@ -24,6 +24,13 @@ app.use('/orders', orderRoutes);
 app.use('/users', userRoutes);
 app.use('/drivers', driverRoutes);
 app.use('/shipments', shipmentRoutes);
+app.use('/analytics', require('./routes/analytics'));
+app.use('/notifications', require('./routes/notifications'));
+try {
+  app.use('/offers', require('./routes/offers'));
+} catch (e) {
+  console.log('Offers route not loaded:', e.message);
+}
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

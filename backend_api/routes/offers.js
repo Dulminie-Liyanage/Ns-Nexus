@@ -98,15 +98,17 @@ router.get('/retailer/:id', async (req, res) => {
     }
 });
 
-// POST /offers — WM creates offer
+// POST /offers — Sales Manager creates offer (PO-04)
 router.post('/', async (req, res) => {
-    const { title, description, offerType, productIds, discountPercent, minOrderValue, expiresAt, createdBy } = req.body;
+    const { title, description, offerType, productIds, discountPercent, minOrderValue, expiresAt, createdBy, regionId } = req.body;
     if (!title) return res.status(400).json({ message: 'Title is required' });
+    // PO-04: verify creator is sales_manager
+    // (Auth middleware handles role — just store regionId)
     try {
         const result = await q(
             `INSERT INTO bulk_offers
-             (Title, Description, OfferType, ProductIDs, DiscountPercent, MinOrderValue, ExpiresAt, CreatedBy)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+             (Title, Description, OfferType, ProductIDs, DiscountPercent, MinOrderValue, ExpiresAt, CreatedBy, RegionID)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 title,
                 description || '',
@@ -115,7 +117,8 @@ router.post('/', async (req, res) => {
                 discountPercent || 0,
                 minOrderValue || 0,
                 expiresAt || null,
-                createdBy || null
+                createdBy || null,
+                regionId || null
             ]
         );
         res.json({ message: 'Offer created', offerId: result.insertId });

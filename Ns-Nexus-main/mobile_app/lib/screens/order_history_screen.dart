@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/order_service.dart';
+import 'order_screen.dart';
 
 class OrderHistoryScreen extends StatefulWidget {
   const OrderHistoryScreen({super.key});
@@ -19,7 +20,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   @override
   void initState() {
     super.initState();
-    _loadHistory();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadHistory());
   }
 
   Future<void> _loadHistory() async {
@@ -214,6 +215,67 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
+  // ── US-19: Quick Reorder ────────────────────────────────────────────────────
+  // Fetches the previous order's items, maps them to productId→qty,
+  // then opens OrderScreen pre-filled with those quantities.
+  // Prices are auto-updated because OrderScreen loads current product prices.
+  Future<void> _reorder(dynamic orderId) async {
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Loading your previous order...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final cart = await _orderService.fetchReorderCart(orderId);
+      if (!mounted) return;
+      Navigator.pop(context); // dismiss loading
+
+      if (cart.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No items found in this order to reorder.'),
+          ),
+        );
+        return;
+      }
+
+      // Push OrderScreen with pre-filled cart — prices auto-update from products
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          // isReorder: true hides urgent toggle and shows "Quick Reorder" title
+          builder: (_) => OrderScreen(preFilledCart: cart, isReorder: true),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // dismiss loading
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to load order: ${e.toString().replaceFirst("Exception: ", "")}',
+          ),
+        ),
+      );
     }
   }
 
@@ -511,25 +573,56 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                   ),
                   const SizedBox(height: 14),
 
-                  // View items button
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _showItemsDialog(
-                        orderId,
-                        order['Status']?.toString() ?? '',
-                        order['RejectionReason']?.toString() ?? '',
-                      ),
-                      icon: const Icon(Icons.list_alt_outlined, size: 16),
-                      label: const Text('View Items'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF0056B3),
-                        side: const BorderSide(color: Color(0xFF0056B3)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                  // Action buttons row — View Items + optional Reorder
+                  Row(
+                    children: [
+                      // View Items
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _showItemsDialog(
+                            orderId,
+                            order['Status']?.toString() ?? '',
+                            order['RejectionReason']?.toString() ?? '',
+                          ),
+                          icon: const Icon(Icons.list_alt_outlined, size: 15),
+                          label: const Text('View Items'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF0056B3),
+                            side: const BorderSide(color: Color(0xFF0056B3)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      // US-19: One-tap Reorder — only for approved/delivered orders
+                      // Rejected/pending orders should not be reordered as-is
+                      if ([
+                        'approved',
+                        'partially_approved',
+                        'delivered',
+                        'packing',
+                        'in_3pl_transit',
+                        'ready_to_ship',
+                        'out_for_delivery',
+                      ].contains(status.toLowerCase()))
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => _reorder(orderId),
+                            icon: const Icon(Icons.replay_outlined, size: 15),
+                            label: const Text('Reorder'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF0056B3),
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ],
               ),

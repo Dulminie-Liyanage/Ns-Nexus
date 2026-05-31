@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/order_service.dart';
+import '../services/analiytics_service.dart';
 
 class WarehouseOrdersScreen extends StatefulWidget {
   final String? initialFilter;
@@ -12,10 +13,16 @@ class WarehouseOrdersScreen extends StatefulWidget {
 class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
     with SingleTickerProviderStateMixin {
   final _svc = OrderService();
+  final _analyticsSvc = AnalyticsService();
   List<dynamic> _allOrders = [];
   bool _loading = true;
   late TabController _tabs;
   String _search = '';
+
+  // US-18: Stage override & batch update
+  final Set<String> _selectedOrderIds = {};
+  bool _batchMode = false;
+  int? _batchTargetStage;
 
   @override
   void initState() {
@@ -70,6 +77,158 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
           final id = (o['OrderID'] ?? '').toString();
           return name.contains(_search.toLowerCase()) || id.contains(_search);
         }).toList();
+
+  // US-18: Single stage override
+  Future<void> _showStageOverride(dynamic order) async {
+    final orderId = (order['OrderID'] ?? order['id'] ?? '').toString();
+    final currentStage =
+        int.tryParse(order['CurrentStage']?.toString() ?? '1') ?? 1;
+    final status = (order['Status'] ?? '').toString().toLowerCase();
+    final stageLabels = {
+      1: 'Pending',
+      2: 'Approved',
+      3: 'Packing',
+      4: 'In 3PL Transit',
+      5: 'Ready to Ship',
+      6: 'Out for Delivery',
+      7: 'Delivered',
+    };
+
+    // Block rejected orders — cannot override
+    if (status == 'rejected') {
+      _snack('Rejected orders cannot be overridden', isError: true);
+      return;
+    }
+
+    // Block delivered orders — already complete
+    if (status == 'delivered' || currentStage == 7) {
+      _snack('Order is already delivered', isError: true);
+      return;
+    }
+
+    // Only allow moving FORWARD from current stage
+    // WM should not send an order backwards in the pipeline
+    final allowedStages = stageLabels.keys
+        .where((s) => s > currentStage && s <= 7)
+        .toList();
+
+    if (allowedStages.isEmpty) {
+      _snack('No further stages available for this order', isError: true);
+      return;
+    }
+
+    int? selected = allowedStages.first;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Override Stage — Order #$orderId',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Currently: ${stageLabels[currentStage] ?? 'Unknown'}',
+              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+            ),
+          ],
+        ),
+        content: StatefulBuilder(
+          builder: (ctx, setS) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: allowedStages.map((stage) {
+              return RadioListTile<int>(
+                value: stage,
+                groupValue: selected,
+                onChanged: (v) => setS(() => selected = v),
+                title: Text(
+                  stageLabels[stage]!,
+                  style: TextStyle(
+                    fontWeight: stage == selected
+                        ? FontWeight.w700
+                        : FontWeight.normal,
+                    color: stage == selected
+                        ? const Color(0xFF0056B3)
+                        : Colors.black87,
+                  ),
+                ),
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                activeColor: const Color(0xFF0056B3),
+              );
+            }).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, selected),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0056B3),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Move Forward'),
+          ),
+        ],
+      ),
+    ).then((newStage) async {
+      if (newStage == null || newStage == currentStage) return;
+      try {
+        await _analyticsSvc.overrideStage(orderId, newStage);
+        _load();
+        _snack('✓ Order #$orderId → ${stageLabels[newStage]}');
+      } catch (e) {
+        _snack(e.toString().replaceFirst('Exception: ', ''), isError: true);
+      }
+    });
+  }
+
+  // US-18: Batch update all selected orders
+  Future<void> _applyBatchOverride() async {
+    if (_selectedOrderIds.isEmpty || _batchTargetStage == null) return;
+    final stageLabels = <int, String>{
+      1: 'Pending',
+      2: 'Approved',
+      3: 'Packing',
+      4: 'In 3PL Transit',
+      5: 'Ready to Ship',
+      6: 'Out for Delivery',
+      7: 'Delivered',
+    };
+    // Capture values BEFORE clearing state
+    final count = _selectedOrderIds.length;
+    final stage = _batchTargetStage!;
+    final ids = _selectedOrderIds.toList();
+    try {
+      await _analyticsSvc.batchOverride(ids, stage);
+    } catch (e) {
+      if (mounted)
+        _snack(e.toString().replaceFirst('Exception: ', ''), isError: true);
+      return;
+    }
+    // Clear batch state first
+    if (mounted) {
+      setState(() {
+        _selectedOrderIds.clear();
+        _batchMode = false;
+        _batchTargetStage = null;
+      });
+    }
+    // Reload in background — don't await so UI isn't blocked
+    _load();
+    if (mounted) {
+      _snack(
+        '✓ $count orders moved to ${stageLabels[stage] ?? 'Stage $stage'}',
+      );
+    }
+  }
 
   void _snack(String msg, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -135,12 +294,112 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
                             ),
                           ),
                           const Spacer(),
+                          // US-18: Batch mode toggle
+                          IconButton(
+                            icon: Icon(
+                              _batchMode
+                                  ? Icons.close
+                                  : Icons.checklist_outlined,
+                            ),
+                            tooltip: _batchMode
+                                ? 'Exit Batch'
+                                : 'Batch Override',
+                            onPressed: () => setState(() {
+                              _batchMode = !_batchMode;
+                              _selectedOrderIds.clear();
+                              _batchTargetStage = null;
+                            }),
+                          ),
                           IconButton(
                             icon: const Icon(Icons.refresh),
                             onPressed: _load,
                           ),
                         ],
                       ),
+                      // US-18: Batch action bar
+                      if (_batchMode) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE6EFFF),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: const Color(0xFF0056B3).withAlpha(51),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                '${_selectedOrderIds.length} selected',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF0056B3),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<int>(
+                                    value: _batchTargetStage,
+                                    hint: const Text(
+                                      'Move to stage...',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                    isDense: true,
+                                    items:
+                                        {
+                                              1: 'Pending',
+                                              2: 'Approved',
+                                              3: 'Packing',
+                                              4: 'In 3PL Transit',
+                                              5: 'Ready',
+                                              6: 'Out for Delivery',
+                                              7: 'Delivered',
+                                            }.entries
+                                            .map(
+                                              (e) => DropdownMenuItem(
+                                                value: e.key,
+                                                child: Text(
+                                                  e.value,
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                    onChanged: (v) =>
+                                        setState(() => _batchTargetStage = v),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed:
+                                    _selectedOrderIds.isNotEmpty &&
+                                        _batchTargetStage != null
+                                    ? _applyBatchOverride
+                                    : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF0056B3),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  minimumSize: Size.zero,
+                                ),
+                                child: const Text(
+                                  'Apply',
+                                  style: TextStyle(fontSize: 13),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       TextField(
                         onChanged: (v) => setState(() => _search = v),
@@ -186,9 +445,42 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
                   child: TabBarView(
                     controller: _tabs,
                     children: [
-                      _OrderList(orders: _pending, onTap: _openOrder),
-                      _OrderList(orders: _urgent, onTap: _openOrder),
-                      _OrderList(orders: _filtered, onTap: _openOrder),
+                      _OrderList(
+                        orders: _pending,
+                        onTap: _openOrder,
+                        onOverride: _showStageOverride,
+                        batchMode: _batchMode,
+                        selectedIds: _selectedOrderIds,
+                        onSelect: (id, v) => setState(
+                          () => v
+                              ? _selectedOrderIds.add(id)
+                              : _selectedOrderIds.remove(id),
+                        ),
+                      ),
+                      _OrderList(
+                        orders: _urgent,
+                        onTap: _openOrder,
+                        onOverride: _showStageOverride,
+                        batchMode: _batchMode,
+                        selectedIds: _selectedOrderIds,
+                        onSelect: (id, v) => setState(
+                          () => v
+                              ? _selectedOrderIds.add(id)
+                              : _selectedOrderIds.remove(id),
+                        ),
+                      ),
+                      _OrderList(
+                        orders: _filtered,
+                        onTap: _openOrder,
+                        onOverride: _showStageOverride,
+                        batchMode: _batchMode,
+                        selectedIds: _selectedOrderIds,
+                        onSelect: (id, v) => setState(
+                          () => v
+                              ? _selectedOrderIds.add(id)
+                              : _selectedOrderIds.remove(id),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -202,7 +494,19 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
 class _OrderList extends StatelessWidget {
   final List<dynamic> orders;
   final void Function(dynamic) onTap;
-  const _OrderList({required this.orders, required this.onTap});
+  final void Function(dynamic)? onOverride;
+  final bool batchMode;
+  final Set<String> selectedIds;
+  final void Function(String, bool)? onSelect;
+
+  const _OrderList({
+    required this.orders,
+    required this.onTap,
+    this.onOverride,
+    this.batchMode = false,
+    this.selectedIds = const {},
+    this.onSelect,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -225,7 +529,18 @@ class _OrderList extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       itemCount: orders.length,
       separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (_, i) => _OrderCard(order: orders[i], onTap: onTap),
+      itemBuilder: (_, i) {
+        final order = orders[i];
+        final id = (order['OrderID'] ?? order['id'] ?? '').toString();
+        return _OrderCard(
+          order: order,
+          onTap: onTap,
+          onOverride: onOverride,
+          batchMode: batchMode,
+          isSelected: selectedIds.contains(id),
+          onSelect: onSelect,
+        );
+      },
     );
   }
 }
@@ -234,31 +549,48 @@ class _OrderList extends StatelessWidget {
 class _OrderCard extends StatelessWidget {
   final dynamic order;
   final void Function(dynamic) onTap;
-  const _OrderCard({required this.order, required this.onTap});
+  final void Function(dynamic)? onOverride;
+  final bool batchMode;
+  final bool isSelected;
+  final void Function(String, bool)? onSelect;
+
+  const _OrderCard({
+    required this.order,
+    required this.onTap,
+    this.onOverride,
+    this.batchMode = false,
+    this.isSelected = false,
+    this.onSelect,
+  });
 
   Color _statusColor(String s) {
     switch (s.toLowerCase()) {
       case 'approved':
-        return Colors.green;
+        return const Color(0xFF16A34A);
       case 'rejected':
-        return Colors.red;
+        return const Color(0xFFDC2626);
       case 'pending':
-        return Colors.orange;
+        return const Color(0xFFEA580C);
+      case 'packing':
+        return const Color(0xFF2563EB);
       case 'assigned':
       case 'processing':
-        return Colors.blue;
-      case 'shipped':
-        return Colors.purple;
+        return const Color(0xFF2563EB);
+      case 'in_3pl_transit':
+      case 'ready_to_ship':
+      case 'out_for_delivery':
+        return const Color(0xFF7C3AED);
       case 'delivered':
-        return Colors.green.shade700;
+        return const Color(0xFF15803D);
       default:
-        return Colors.grey;
+        return const Color(0xFF6B7280);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final id = order['OrderID']?.toString() ?? '';
+    final orderId = order['OrderID'] ?? id;
     final retailer = order['RetailerName'] ?? order['ShopName'] ?? '';
     final status = (order['Status'] ?? 'pending').toString();
     final isUrgent = order['IsUrgent'] == 1;
@@ -267,18 +599,32 @@ class _OrderCard extends StatelessWidget {
     final isPending = status.toLowerCase() == 'pending';
 
     return GestureDetector(
-      onTap: () => onTap(order),
+      onTap: () {
+        if (batchMode) {
+          onSelect?.call(id, !isSelected);
+        } else {
+          onTap(order);
+        }
+      },
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isSelected ? const Color(0xFFE6EFFF) : Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isUrgent ? Colors.red.shade300 : Colors.grey.shade200,
-            width: isUrgent ? 1.5 : 0.5,
+            color: isSelected
+                ? const Color(0xFF0056B3)
+                : isUrgent
+                ? Colors.red.shade300
+                : Colors.grey.shade200,
+            width: isSelected
+                ? 1.5
+                : isUrgent
+                ? 1.5
+                : 0.5,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.02),
+              color: Colors.black.withAlpha(5),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
@@ -290,6 +636,15 @@ class _OrderCard extends StatelessWidget {
           children: [
             Row(
               children: [
+                // US-18: Batch mode checkbox
+                if (batchMode)
+                  Checkbox(
+                    value: isSelected,
+                    onChanged: (v) => onSelect?.call(id, v ?? false),
+                    activeColor: const Color(0xFF0056B3),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
                 Text(
                   'Order #$id',
                   style: const TextStyle(
@@ -330,13 +685,53 @@ class _OrderCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                // US-18: Stage override button — hide for rejected/delivered
+                if (!batchMode &&
+                    onOverride != null &&
+                    status.toLowerCase() != 'rejected' &&
+                    status.toLowerCase() != 'delivered')
+                  GestureDetector(
+                    onTap: () => onOverride!(order),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE6EFFF),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: const Color(0xFF0056B3).withAlpha(51),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.edit_outlined,
+                            size: 12,
+                            color: Color(0xFF0056B3),
+                          ),
+                          const SizedBox(width: 3),
+                          const Text(
+                            'Override',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFF0056B3),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
+                    color: statusColor.withAlpha(25),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -867,10 +1262,10 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
               final isRejectedStage = isRejected && s == 2;
               final isLast = i == _stageLabels.length - 1;
               final color = isRejectedStage
-                  ? Colors.red
+                  ? const Color(0xFFDC2626)
                   : isDone
                   ? const Color(0xFF0056B3)
-                  : Colors.grey.shade300;
+                  : const Color(0xFFD1D5DB);
 
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -884,7 +1279,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
                           height: 26,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: color.withOpacity(0.12),
+                            color: color.withAlpha(30),
                             border: Border.all(
                               color: color,
                               width: isCurrent ? 2 : 1,
@@ -905,7 +1300,7 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
                             width: 2,
                             height: 30,
                             color: s < stage
-                                ? const Color(0xFF0056B3).withOpacity(0.25)
+                                ? const Color(0xFF0056B3).withAlpha(63)
                                 : Colors.grey.shade200,
                           ),
                       ],
@@ -966,10 +1361,13 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
                               ),
                             ),
                           if (isRejectedStage &&
-                              o['RejectionReason'] != null &&
-                              o['RejectionReason'].toString().isNotEmpty)
+                              (o['RejectionReason'] ?? o['rejection_reason']) !=
+                                  null &&
+                              (o['RejectionReason'] ?? o['rejection_reason'])
+                                  .toString()
+                                  .isNotEmpty)
                             Text(
-                              'Reason: ${o['RejectionReason']}',
+                              'Reason: ${o['RejectionReason'] ?? o['rejection_reason']}',
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.red.shade400,
