@@ -49,8 +49,9 @@ router.post('/', (req, res) => {
 // PO-05: Flags anomalous orders for Sales Manager
 function _placeOrder(req, res, retailer_id, delivery_date, is_urgent, items) {
 
-    const orderQuery = 'INSERT INTO orders (RetailerID, Status, IsUrgent, DeliveryDate) VALUES (?, ?, ?, ?)';
-    db.query(orderQuery, [retailer_id, 'pending', is_urgent ? 1 : 0, delivery_date], (err, result) => {
+    // PO-03: Insert as 'approved' immediately — no pending state
+    const orderQuery = 'INSERT INTO orders (RetailerID, Status, CurrentStage, IsUrgent, DeliveryDate) VALUES (?, ?, ?, ?, ?)';
+    db.query(orderQuery, [retailer_id, 'approved', 2, is_urgent ? 1 : 0, delivery_date], (err, result) => {
         if (err) return res.status(500).json({ message: 'Database error', error: err });
 
         const orderID = result.insertId;
@@ -91,11 +92,27 @@ function _placeOrder(req, res, retailer_id, delivery_date, is_urgent, items) {
                      AND o.CreatedAt >= DATE_SUB(NOW(), INTERVAL 90 DAY)`,
                     [retailer_id], (avgErr, avgRows) => {
                         const avgQty = parseFloat(avgRows?.[0]?.avgQty) || 0;
-                        const isFlagged = avgQty > 0 && totalQty > avgQty * 3;
+
+                        let isFlagged = false;
+                        let flagReason = null;
+
+                        if (avgQty > 0) {
+                            // Has history — flag if 3x above average
+                            if (totalQty > avgQty * 3) {
+                                isFlagged = true;
+                                flagReason = `Order qty (${totalQty}) is ${Math.round(totalQty/avgQty)}x above retailer avg (${Math.round(avgQty)})`;
+                            }
+                        } else {
+                            // No history — flag if order exceeds 100 units (absolute threshold)
+                            if (totalQty > 100) {
+                                isFlagged = true;
+                                flagReason = `Large first-time order (${totalQty} units) flagged for review`;
+                            }
+                        }
+
+                        console.log(`[ORDER] RetailerID=${retailer_id} totalQty=${totalQty} avgQty=${avgQty} isFlagged=${isFlagged}`);
+
                         const newStatus = isFlagged ? 'flagged_for_review' : 'approved';
-                        const flagReason = isFlagged
-                            ? `Order qty (${totalQty}) is ${Math.round(totalQty/avgQty)}x above retailer avg (${Math.round(avgQty)})`
-                            : null;
 
                         // PO-01: Find assigned 3PL distributor for this retailer
                         db.query(
@@ -106,7 +123,7 @@ function _placeOrder(req, res, retailer_id, delivery_date, is_urgent, items) {
                                 db.query(
                                     `UPDATE orders SET
                                         Status = ?,
-                                        CurrentStage = 2,
+                                        CurrentStage = ?,
                                         TotalPrice = ?,
                                         TotalWeight = ?,
                                         AutoApprovedAt = NOW(),
@@ -116,7 +133,9 @@ function _placeOrder(req, res, retailer_id, delivery_date, is_urgent, items) {
                                         DriverID = ?
                                      WHERE OrderID = ?`,
                                     [
-                                        newStatus, totalPrice, totalWeight,
+                                        newStatus,
+                                        isFlagged ? 1 : 2,
+                                        totalPrice, totalWeight,
                                         isFlagged ? 1 : 0,
                                         flagReason,
                                         isFlagged ? new Date() : null,

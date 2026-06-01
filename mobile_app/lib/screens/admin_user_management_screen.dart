@@ -24,7 +24,8 @@ class _UserFormSheet extends StatefulWidget {
     required String role,
     required bool priorityStatus,
     String? userId,
-  }) onSubmit;
+  })
+  onSubmit;
 
   const _UserFormSheet({this.existing, required this.onSubmit});
 
@@ -36,14 +37,18 @@ class _UserFormSheetState extends State<_UserFormSheet> {
   final _formKey = GlobalKey<FormState>();
 
   // Text controllers pre-filled from existing user data if in Edit mode
-  late final TextEditingController _first =
-      TextEditingController(text: widget.existing?.firstName ?? '');
-  late final TextEditingController _last =
-      TextEditingController(text: widget.existing?.lastName ?? '');
-  late final TextEditingController _email =
-      TextEditingController(text: widget.existing?.email ?? '');
-  late final TextEditingController _phone =
-      TextEditingController(text: widget.existing?.phone ?? '');
+  late final TextEditingController _first = TextEditingController(
+    text: widget.existing?.firstName ?? '',
+  );
+  late final TextEditingController _last = TextEditingController(
+    text: widget.existing?.lastName ?? '',
+  );
+  late final TextEditingController _email = TextEditingController(
+    text: widget.existing?.email ?? '',
+  );
+  late final TextEditingController _phone = TextEditingController(
+    text: widget.existing?.phone ?? '',
+  );
 
   /// Currently selected role — defaults to 'retailer' for new users
   late String _role;
@@ -75,11 +80,11 @@ class _UserFormSheetState extends State<_UserFormSheet> {
   /// Human-readable labels for each DB role string
   static const _roleLabels = {
     'warehouse_manager': 'Warehouse Manager',
-    'sales_manager':     'Sales Manager',
-    'retailer':          'Retailer',
-    'driver':            'Delivery Driver',
-    '3pl_manager':       '3PL Manager',
-    'admin':             'Admin',
+    'sales_manager': 'Sales Manager',
+    'retailer': 'Retailer',
+    'driver': 'Delivery Driver',
+    '3pl_manager': '3PL Manager',
+    'admin': 'Admin',
   };
 
   /// True when editing an existing user, false when creating a new one
@@ -113,11 +118,13 @@ class _UserFormSheetState extends State<_UserFormSheet> {
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-          backgroundColor: Colors.red.shade700,
-          behavior: SnackBarBehavior.floating,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -129,7 +136,9 @@ class _UserFormSheetState extends State<_UserFormSheet> {
     return Padding(
       // Bottom padding accounts for keyboard height so fields stay visible
       padding: EdgeInsets.only(
-        left: 20, right: 20, top: 24,
+        left: 20,
+        right: 20,
+        top: 24,
         bottom: MediaQuery.of(context).viewInsets.bottom + 24,
       ),
       child: Form(
@@ -141,7 +150,8 @@ class _UserFormSheetState extends State<_UserFormSheet> {
             // Drag handle bar at top of sheet
             Center(
               child: Container(
-                width: 40, height: 4,
+                width: 40,
+                height: 4,
                 decoration: BoxDecoration(
                   color: Colors.grey.shade300,
                   borderRadius: BorderRadius.circular(2),
@@ -151,54 +161,84 @@ class _UserFormSheetState extends State<_UserFormSheet> {
             const SizedBox(height: 16),
 
             // Sheet title + close button
-            Row(children: [
-              Text(
-                _isEdit ? 'Edit user' : 'Create new user',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close),
-              ),
-            ]),
+            Row(
+              children: [
+                Text(
+                  _isEdit ? 'Edit user' : 'Create new user',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
             const SizedBox(height: 16),
 
             // First name + Last name side by side
-            Row(children: [
-              Expanded(child: _field(_first, 'First name', Icons.person_outline,
-                  validator: (v) => v!.trim().isEmpty ? 'Required' : null)),
-              const SizedBox(width: 12),
-              Expanded(child: _field(_last, 'Last name', Icons.person_outline,
-                  validator: (v) => v!.trim().isEmpty ? 'Required' : null)),
-            ]),
+            Row(
+              children: [
+                Expanded(
+                  child: _field(
+                    _first,
+                    'First name',
+                    Icons.person_outline,
+                    validator: (v) => v!.trim().isEmpty ? 'Required' : null,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _field(
+                    _last,
+                    'Last name',
+                    Icons.person_outline,
+                    validator: (v) => v!.trim().isEmpty ? 'Required' : null,
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 12),
 
             // Email — read-only in Edit mode to prevent changing identity
-            _field(_email, 'Email', Icons.email_outlined,
-                keyboard: TextInputType.emailAddress,
-                readOnly: _isEdit,
-                validator: (v) {
-                  if (v!.trim().isEmpty) return 'Required';
-                  if (!v.contains('@')) return 'Invalid email';
-                  return null;
-                }),
+            _field(
+              _email,
+              'Email',
+              Icons.email_outlined,
+              keyboard: TextInputType.emailAddress,
+              readOnly: _isEdit,
+              validator: (v) {
+                if (v!.trim().isEmpty) return 'Required';
+                if (!v.contains('@')) return 'Invalid email';
+                return null;
+              },
+            ),
             const SizedBox(height: 12),
 
             // Phone — digits only input
-            _field(_phone, 'Phone', Icons.phone_outlined,
-                keyboard: TextInputType.phone,
-                formatters: [FilteringTextInputFormatter.digitsOnly],
-                validator: (v) =>
-                    v!.trim().length < 9 ? 'Enter valid phone' : null),
+            _field(
+              _phone,
+              'Phone',
+              Icons.phone_outlined,
+              keyboard: TextInputType.phone,
+              formatters: [FilteringTextInputFormatter.digitsOnly],
+              validator: (v) =>
+                  v!.trim().length < 9 ? 'Enter valid phone' : null,
+            ),
             const SizedBox(height: 16),
 
             // Role selection chips — one chip per DB role
-            const Text('Role',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            const Text(
+              'Role',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 10),
             Wrap(
-              spacing: 8, runSpacing: 8,
+              spacing: 8,
+              runSpacing: 8,
               children: _roles.map((r) {
                 final selected = _role == r;
                 return GestureDetector(
@@ -209,21 +249,28 @@ class _UserFormSheetState extends State<_UserFormSheet> {
                   }),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 10),
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: selected
-                          ? const Color(0xFF0056B3) : Colors.transparent,
+                          ? const Color(0xFF0056B3)
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                          color: selected
-                              ? const Color(0xFF0056B3)
-                              : Colors.grey.shade300),
+                        color: selected
+                            ? const Color(0xFF0056B3)
+                            : Colors.grey.shade300,
+                      ),
                     ),
-                    child: Text(_roleLabels[r] ?? r,
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: selected ? Colors.white : Colors.black87)),
+                    child: Text(
+                      _roleLabels[r] ?? r,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: selected ? Colors.white : Colors.black87,
+                      ),
+                    ),
                   ),
                 );
               }).toList(),
@@ -238,7 +285,8 @@ class _UserFormSheetState extends State<_UserFormSheet> {
                 decoration: BoxDecoration(
                   // Gold tint when priority ON, neutral grey when OFF
                   color: _isPriority
-                      ? const Color(0xFFFAEEDA) : const Color(0xFFF8FAFC),
+                      ? const Color(0xFFFAEEDA)
+                      : const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: _isPriority
@@ -246,55 +294,81 @@ class _UserFormSheetState extends State<_UserFormSheet> {
                         : Colors.grey.shade300,
                   ),
                 ),
-                child: Row(children: [
-                  Icon(Icons.star_outline,
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.star_outline,
                       color: _isPriority
-                          ? const Color(0xFFD4A017) : Colors.grey,
-                      size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
+                          ? const Color(0xFFD4A017)
+                          : Colors.grey,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                      Text('Priority Retailer',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w600, fontSize: 14,
+                          Text(
+                            'Priority Retailer',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
                               color: _isPriority
-                                  ? const Color(0xFF854F0B) : Colors.black87)),
-                      Text('Can place urgent orders & bypass 48-hour rule',
-                          style: TextStyle(
-                              fontSize: 11, color: Colors.grey.shade600)),
-                    ]),
-                  ),
-                  // Toggle to grant or revoke priority status
-                  Switch(
-                    value: _isPriority,
-                    activeColor: const Color(0xFFD4A017),
-                    onChanged: (v) => setState(() => _isPriority = v),
-                  ),
-                ]),
+                                  ? const Color(0xFF854F0B)
+                                  : Colors.black87,
+                            ),
+                          ),
+                          Text(
+                            'Can place urgent orders & bypass 48-hour rule',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Toggle to grant or revoke priority status
+                    Switch(
+                      value: _isPriority,
+                      activeColor: const Color(0xFFD4A017),
+                      onChanged: (v) => setState(() => _isPriority = v),
+                    ),
+                  ],
+                ),
               ),
             ],
             const SizedBox(height: 24),
 
             // Submit button — shows spinner while request is in flight
             SizedBox(
-              width: double.infinity, height: 50,
+              width: double.infinity,
+              height: 50,
               child: ElevatedButton(
                 onPressed: _loading ? null : _submit,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF0056B3),
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 child: _loading
-                    ? const SizedBox(width: 20, height: 20,
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : Text(_isEdit ? 'Save changes' : 'Create account',
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        _isEdit ? 'Save changes' : 'Create account',
                         style: const TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w600)),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
               ),
             ),
           ],
@@ -306,7 +380,9 @@ class _UserFormSheetState extends State<_UserFormSheet> {
   /// Reusable styled text field.
   /// [readOnly] greys the field and blocks editing (used for email in edit mode).
   Widget _field(
-    TextEditingController ctrl, String label, IconData icon, {
+    TextEditingController ctrl,
+    String label,
+    IconData icon, {
     TextInputType keyboard = TextInputType.text,
     List<TextInputFormatter>? formatters,
     String? Function(String?)? validator,
@@ -324,12 +400,15 @@ class _UserFormSheetState extends State<_UserFormSheet> {
         prefixIcon: Icon(icon, size: 20),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: Colors.grey.shade300)),
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
         filled: readOnly,
         fillColor: Colors.grey.shade100,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
       ),
     );
   }
@@ -348,8 +427,7 @@ class AdminUserManagementScreen extends StatefulWidget {
       _AdminUserManagementScreenState();
 }
 
-class _AdminUserManagementScreenState
-    extends State<AdminUserManagementScreen> {
+class _AdminUserManagementScreenState extends State<AdminUserManagementScreen> {
   final _svc = UserService();
 
   /// Full list of all users fetched from the backend
@@ -368,22 +446,30 @@ class _AdminUserManagementScreenState
 
   // Filter chip options — must match exact DB role strings
   static const _roleOptions = [
-    'All', 'warehouse_manager', 'retailer', 'driver', '3pl_manager', 'admin',
+    'All',
+    'warehouse_manager',
+    'sales_manager',
+    'retailer',
+    'driver',
+    '3pl_manager',
+    'admin',
   ];
 
   /// Human-readable labels for filter chips and role badges
   static const _roleLabels = {
     'All': 'All roles',
     'warehouse_manager': 'Warehouse Manager',
+    'sales_manager': 'Sales Manager',
     'retailer': 'Retailer',
     'driver': 'Driver',
-    '3pl_manager': 'Logistics Manager',
+    '3pl_manager': '3PL Manager',
     'admin': 'Admin',
   };
 
   /// Badge colours corresponding to each role
   static const _roleColors = {
     'warehouse_manager': Color(0xFF185FA5),
+    'sales_manager': Color(0xFF7C3AED),
     'retailer': Color(0xFF534AB7),
     'driver': Color(0xFF854F0B),
     '3pl_manager': Color(0xFF0F6E56),
@@ -418,7 +504,8 @@ class _AdminUserManagementScreenState
     setState(() {
       _filtered = _all.where((u) {
         // Case-insensitive match on full name or email
-        final matchSearch = _search.isEmpty ||
+        final matchSearch =
+            _search.isEmpty ||
             u.fullName.toLowerCase().contains(_search.toLowerCase()) ||
             u.email.toLowerCase().contains(_search.toLowerCase());
         // 'All' passes every role; otherwise exact match
@@ -435,26 +522,42 @@ class _AdminUserManagementScreenState
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (_) => _UserFormSheet(
         existing: existing,
-        onSubmit: ({
-          required firstName, required lastName, required email,
-          required phone, required role, required bool priorityStatus,
-          String? userId,
-        }) async {
-          if (userId != null) {
-            // Edit path — userId identifies the record to update
-            await _svc.updateUser(
-                userId: userId, firstName: firstName, lastName: lastName,
-                phone: phone, role: role, priorityStatus: priorityStatus);
-          } else {
-            // Create path — no userId, backend assigns one
-            await _svc.createUser(
-                firstName: firstName, lastName: lastName, email: email,
-                phone: phone, role: role, priorityStatus: priorityStatus);
-          }
-        },
+        onSubmit:
+            ({
+              required firstName,
+              required lastName,
+              required email,
+              required phone,
+              required role,
+              required bool priorityStatus,
+              String? userId,
+            }) async {
+              if (userId != null) {
+                // Edit path — userId identifies the record to update
+                await _svc.updateUser(
+                  userId: userId,
+                  firstName: firstName,
+                  lastName: lastName,
+                  phone: phone,
+                  role: role,
+                  priorityStatus: priorityStatus,
+                );
+              } else {
+                // Create path — no userId, backend assigns one
+                await _svc.createUser(
+                  firstName: firstName,
+                  lastName: lastName,
+                  email: email,
+                  phone: phone,
+                  role: role,
+                  priorityStatus: priorityStatus,
+                );
+              }
+            },
       ),
     );
     if (result == true) {
@@ -474,20 +577,25 @@ class _AdminUserManagementScreenState
       builder: (ctx) => AlertDialog(
         title: Text('${activate ? 'Activate' : 'Deactivate'} account?'),
         content: Text(
-            '${activate ? 'Activate' : 'Deactivate'} ${u.fullName}\'s account?'),
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          '${activate ? 'Activate' : 'Deactivate'} ${u.fullName}\'s account?',
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    activate ? Colors.green.shade600 : Colors.red.shade600),
-            child: Text(activate ? 'Activate' : 'Deactivate',
-                style: const TextStyle(color: Colors.white)),
+              backgroundColor: activate
+                  ? Colors.green.shade600
+                  : Colors.red.shade600,
+            ),
+            child: Text(
+              activate ? 'Activate' : 'Deactivate',
+              style: const TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -505,12 +613,14 @@ class _AdminUserManagementScreenState
 
   /// Shows a floating snackbar — green for success, red for errors.
   void _snack(String msg, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: const TextStyle(fontSize: 14)),
-      backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, style: const TextStyle(fontSize: 14)),
+        backgroundColor: isError ? Colors.red.shade700 : Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
   }
 
   /// Builds a coloured pill badge showing the user's human-readable role name.
@@ -520,11 +630,17 @@ class _AdminUserManagementScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(20)),
-      child: Text(label,
-          style: TextStyle(
-              fontSize: 12, fontWeight: FontWeight.w600, color: color)),
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
     );
   }
 
@@ -540,13 +656,17 @@ class _AdminUserManagementScreenState
         backgroundColor: Colors.white,
         elevation: 0,
         toolbarHeight: 80,
-        title: Image.asset('assets/images/nestle_logo.png',
-            height: 50, fit: BoxFit.contain),
+        title: Image.asset(
+          'assets/images/nestle_logo.png',
+          height: 50,
+          fit: BoxFit.contain,
+        ),
         actions: [
           const CircleAvatar(
-              backgroundColor: Color(0xFFE2E8F0),
-              radius: 18,
-              child: Icon(Icons.person, color: Colors.black54, size: 20)),
+            backgroundColor: Color(0xFFE2E8F0),
+            radius: 18,
+            child: Icon(Icons.person, color: Colors.black54, size: 20),
+          ),
           // Logout — clears session and returns to LoginScreen
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.black54),
@@ -554,8 +674,10 @@ class _AdminUserManagementScreenState
             onPressed: () async {
               await AuthService().logout();
               if (!mounted) return;
-              Navigator.pushReplacement(context,
-                  MaterialPageRoute(builder: (_) => const LoginScreen()));
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
             },
           ),
           const SizedBox(width: 8),
@@ -567,265 +689,344 @@ class _AdminUserManagementScreenState
         onPressed: () => _openForm(),
         backgroundColor: const Color(0xFF0056B3),
         icon: const Icon(Icons.person_add_outlined, color: Colors.white),
-        label: const Text('New user',
-            style: TextStyle(
-                color: Colors.white, fontWeight: FontWeight.w600)),
+        label: const Text(
+          'New user',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+        ),
       ),
 
-      body: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // ── Header: page title + search bar + role filter chips ─────────────
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('User Management',
-                style: TextStyle(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header: page title + search bar + role filter chips ─────────────
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'User Management',
+                  style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF1E293B))),
-            const SizedBox(height: 12),
+                    color: Color(0xFF1E293B),
+                  ),
+                ),
+                const SizedBox(height: 12),
 
-            // Real-time search field
-            TextField(
-              onChanged: (v) { _search = v; _applyFilters(); },
-              style: const TextStyle(fontSize: 15),
-              decoration: InputDecoration(
-                hintText: 'Search by name or email...',
-                hintStyle: const TextStyle(fontSize: 14),
-                prefixIcon: const Icon(Icons.search, size: 22),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.shade300)),
-                enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.shade300)),
-                filled: true,
-                fillColor: const Color(0xFFF8FAFC),
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-            const SizedBox(height: 12),
+                // Real-time search field
+                TextField(
+                  onChanged: (v) {
+                    _search = v;
+                    _applyFilters();
+                  },
+                  style: const TextStyle(fontSize: 15),
+                  decoration: InputDecoration(
+                    hintText: 'Search by name or email...',
+                    hintStyle: const TextStyle(fontSize: 14),
+                    prefixIcon: const Icon(Icons.search, size: 22),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+                const SizedBox(height: 12),
 
-            // Horizontally scrollable role filter chips
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _roleOptions.map((r) {
-                  final selected = _roleFilter == r;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() => _roleFilter = r);
-                        _applyFilters();
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? const Color(0xFF0056B3) : Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
+                // Horizontally scrollable role filter chips
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: _roleOptions.map((r) {
+                      final selected = _roleFilter == r;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() => _roleFilter = r);
+                            _applyFilters();
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
                               color: selected
                                   ? const Color(0xFF0056B3)
-                                  : Colors.grey.shade300),
-                        ),
-                        child: Text(_roleLabels[r] ?? r,
-                            style: TextStyle(
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: selected
+                                    ? const Color(0xFF0056B3)
+                                    : Colors.grey.shade300,
+                              ),
+                            ),
+                            child: Text(
+                              _roleLabels[r] ?? r,
+                              style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w500,
-                                color: selected
-                                    ? Colors.white : Colors.black87)),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ]),
-        ),
-
-        // ── Stats row: result count + active/inactive badges ─────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
-          child: Row(children: [
-            Text('${_filtered.length} user${_filtered.length == 1 ? '' : 's'}',
-                style: const TextStyle(
-                    fontSize: 14, color: Color(0xFF64748B))),
-            const Spacer(),
-            // Active count badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(20)),
-              child: Text('$activeCount active',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.green.shade700)),
-            ),
-            const SizedBox(width: 8),
-            // Inactive count badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(20)),
-              child: Text('$inactiveCount inactive',
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.red.shade400)),
-            ),
-          ]),
-        ),
-
-        // ── User list ─────────────────────────────────────────────────────────
-        Expanded(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _filtered.isEmpty
-                  ? Center(
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        Icon(Icons.people_outline,
-                            size: 56, color: Colors.grey.shade300),
-                        const SizedBox(height: 12),
-                        Text('No users found',
-                            style: TextStyle(
-                                fontSize: 16, color: Colors.grey.shade400)),
-                      ]))
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                        itemCount: _filtered.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(height: 10),
-                        itemBuilder: (_, i) {
-                          final u = _filtered[i];
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: Colors.grey.shade200),
-                              boxShadow: [
-                                BoxShadow(
-                                    color: Colors.black.withOpacity(0.02),
-                                    blurRadius: 6,
-                                    offset: const Offset(0, 2)),
-                              ],
+                                color: selected ? Colors.white : Colors.black87,
+                              ),
                             ),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 8),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
 
-                              // Avatar shows first letter of first name
-                              leading: CircleAvatar(
-                                radius: 24,
-                                backgroundColor: const Color(0xFFE6EFFF),
-                                child: Text(
-                                  u.firstName.isNotEmpty
-                                      ? u.firstName[0].toUpperCase() : '?',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 18,
-                                      color: Color(0xFF0056B3)),
+          // ── Stats row: result count + active/inactive badges ─────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+            child: Row(
+              children: [
+                Text(
+                  '${_filtered.length} user${_filtered.length == 1 ? '' : 's'}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+                const Spacer(),
+                // Active count badge
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$activeCount active',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.green.shade700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Inactive count badge
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$inactiveCount inactive',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.red.shade400,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── User list ─────────────────────────────────────────────────────────
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _filtered.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.people_outline,
+                          size: 56,
+                          color: Colors.grey.shade300,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No users found',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey.shade400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                      itemCount: _filtered.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (_, i) {
+                        final u = _filtered[i];
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.grey.shade200),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.02),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+
+                            // Avatar shows first letter of first name
+                            leading: CircleAvatar(
+                              radius: 24,
+                              backgroundColor: const Color(0xFFE6EFFF),
+                              child: Text(
+                                u.firstName.isNotEmpty
+                                    ? u.firstName[0].toUpperCase()
+                                    : '?',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 18,
+                                  color: Color(0xFF0056B3),
                                 ),
                               ),
+                            ),
 
-                              // Full name + green/red dot for active status
-                              title: Row(children: [
-                                Text(u.fullName,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 15,
-                                        color: Color(0xFF1E293B))),
+                            // Full name + green/red dot for active status
+                            title: Row(
+                              children: [
+                                Text(
+                                  u.fullName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 15,
+                                    color: Color(0xFF1E293B),
+                                  ),
+                                ),
                                 const SizedBox(width: 8),
                                 Container(
-                                  width: 8, height: 8,
+                                  width: 8,
+                                  height: 8,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     // Green = active, Red = locked/inactive
                                     color: u.isActive
-                                        ? Colors.green : Colors.red.shade300,
+                                        ? Colors.green
+                                        : Colors.red.shade300,
                                   ),
                                 ),
-                              ]),
+                              ],
+                            ),
 
-                              // Email + role badge + optional gold Priority badge
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const SizedBox(height: 4),
-                                  Text(u.email,
-                                      style: const TextStyle(
-                                          fontSize: 13,
-                                          color: Color(0xFF64748B))),
-                                  const SizedBox(height: 4),
-                                  Row(children: [
+                            // Email + role badge + optional gold Priority badge
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 4),
+                                Text(
+                                  u.email,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
                                     _roleBadge(u.role),
                                     // Priority badge — only shown for priority retailers
                                     if (u.priorityStatus) ...[
                                       const SizedBox(width: 6),
                                       Container(
                                         padding: const EdgeInsets.symmetric(
-                                            horizontal: 6, vertical: 2),
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
                                         decoration: BoxDecoration(
-                                            color: const Color(0xFFFAEEDA),
-                                            borderRadius:
-                                                BorderRadius.circular(20)),
+                                          color: const Color(0xFFFAEEDA),
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
+                                        ),
                                         child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                          const Icon(Icons.star,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons.star,
                                               size: 10,
-                                              color: Color(0xFFD4A017)),
-                                          const SizedBox(width: 3),
-                                          Text('Priority',
+                                              color: Color(0xFFD4A017),
+                                            ),
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              'Priority',
                                               style: TextStyle(
-                                                  fontSize: 10,
-                                                  color: const Color(
-                                                      0xFF854F0B),
-                                                  fontWeight:
-                                                      FontWeight.w600)),
-                                        ]),
+                                                fontSize: 10,
+                                                color: const Color(0xFF854F0B),
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ],
-                                  ]),
-                                ],
-                              ),
-
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  // Active/inactive toggle — tapping opens confirm dialog
-                                  Transform.scale(
-                                    scale: 0.85,
-                                    child: Switch(
-                                      value: u.isActive,
-                                      activeColor: Colors.green,
-                                      onChanged: (_) => _toggleStatus(u),
-                                    ),
-                                  ),
-                                  // Edit button — opens sheet in Edit mode
-                                  IconButton(
-                                    icon: const Icon(Icons.edit_outlined,
-                                        size: 18, color: Color(0xFF64748B)),
-                                    onPressed: () => _openForm(existing: u),
-                                    padding: EdgeInsets.zero,
-                                    constraints: const BoxConstraints(),
-                                  ),
-                                ],
-                              ),
+                                  ],
+                                ),
+                              ],
                             ),
-                          );
-                        },
-                      ),
+
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Active/inactive toggle — tapping opens confirm dialog
+                                Transform.scale(
+                                  scale: 0.85,
+                                  child: Switch(
+                                    value: u.isActive,
+                                    activeColor: Colors.green,
+                                    onChanged: (_) => _toggleStatus(u),
+                                  ),
+                                ),
+                                // Edit button — opens sheet in Edit mode
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 18,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                  onPressed: () => _openForm(existing: u),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
-        ),
-      ]),
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }

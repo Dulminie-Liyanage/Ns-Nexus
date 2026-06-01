@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:ns_nexus_mobile_app/services/analiytics_service.dart';
 import '../services/order_service.dart';
-import '../services/analiytics_service.dart';
 
 class WarehouseOrdersScreen extends StatefulWidget {
   final String? initialFilter;
@@ -32,7 +32,7 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
         : widget.initialFilter == 'all'
         ? 2
         : 0;
-    _tabs = TabController(length: 3, vsync: this, initialIndex: startTab);
+    _tabs = TabController(length: 2, vsync: this, initialIndex: 0);
     _load();
   }
 
@@ -63,8 +63,9 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
   List<dynamic> get _urgent => _allOrders
       .where(
         (o) =>
-            o['IsUrgent'] == 1 &&
-            (o['Status'] ?? '').toString().toLowerCase() == 'pending',
+            o['IsUrgent'] == 1 ||
+            (o['Status'] ?? '').toString().toLowerCase() ==
+                'flagged_for_review',
       )
       .toList();
 
@@ -242,31 +243,16 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
   }
 
   Future<void> _openOrder(dynamic order) async {
-    final status = (order['Status'] ?? '').toString().toLowerCase();
-    if (status == 'pending') {
-      final result = await showModalBottomSheet<bool>(
-        context: context,
-        isScrollControlled: true,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        builder: (_) => _ApprovalSheet(order: order, svc: _svc),
-      );
-      if (result == true) {
-        _load();
-        _snack('Order updated.');
-      }
-    } else {
-      await showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        builder: (_) =>
-            _OrderDetailSheet(order: order, svc: _svc, onUpdated: _load),
-      );
-    }
+    // PO-03: No approve/reject — orders auto-approved, just show details
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) =>
+          _OrderDetailSheet(order: order, svc: _svc, onUpdated: _load),
+    );
   }
 
   @override
@@ -433,7 +419,6 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
                           fontWeight: FontWeight.w600,
                         ),
                         tabs: [
-                          Tab(text: 'Pending (${_pending.length})'),
                           Tab(text: 'Urgent (${_urgent.length})'),
                           Tab(text: 'All (${_filtered.length})'),
                         ],
@@ -445,18 +430,6 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
                   child: TabBarView(
                     controller: _tabs,
                     children: [
-                      _OrderList(
-                        orders: _pending,
-                        onTap: _openOrder,
-                        onOverride: _showStageOverride,
-                        batchMode: _batchMode,
-                        selectedIds: _selectedOrderIds,
-                        onSelect: (id, v) => setState(
-                          () => v
-                              ? _selectedOrderIds.add(id)
-                              : _selectedOrderIds.remove(id),
-                        ),
-                      ),
                       _OrderList(
                         orders: _urgent,
                         onTap: _openOrder,
@@ -596,7 +569,6 @@ class _OrderCard extends StatelessWidget {
     final isUrgent = order['IsUrgent'] == 1;
     final stage = int.tryParse(order['CurrentStage']?.toString() ?? '1') ?? 1;
     final statusColor = _statusColor(status);
-    final isPending = status.toLowerCase() == 'pending';
 
     return GestureDetector(
       onTap: () {
@@ -781,7 +753,7 @@ class _OrderCard extends StatelessWidget {
                 ),
                 const Spacer(),
                 Text(
-                  isPending ? 'Tap to approve/reject →' : 'Tap for details →',
+                  'Tap for details →',
                   style: const TextStyle(
                     fontSize: 11,
                     color: Color(0xFF0056B3),
@@ -795,295 +767,6 @@ class _OrderCard extends StatelessWidget {
       ),
     );
   }
-}
-
-// ── Approval sheet — ONLY Approve or Reject, NO partial ──────────────────────
-class _ApprovalSheet extends StatefulWidget {
-  final dynamic order;
-  final OrderService svc;
-  const _ApprovalSheet({required this.order, required this.svc});
-
-  @override
-  State<_ApprovalSheet> createState() => _ApprovalSheetState();
-}
-
-class _ApprovalSheetState extends State<_ApprovalSheet> {
-  final _reasonCtrl = TextEditingController();
-  bool _loading = false;
-  String? _action;
-
-  @override
-  void dispose() {
-    _reasonCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit(String action) async {
-    if (action == 'reject' && _reasonCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please provide a rejection reason.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-    setState(() {
-      _loading = true;
-      _action = action;
-    });
-    try {
-      await widget.svc.reviewOrder(
-        orderId: widget.order['OrderID']?.toString() ?? '',
-        action: action,
-        reason: _reasonCtrl.text.trim(),
-      );
-      if (mounted) Navigator.pop(context, true);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', '')),
-            backgroundColor: Colors.red.shade700,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        setState(() {
-          _loading = false;
-          _action = null;
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final o = widget.order;
-    final orderId = o['OrderID']?.toString() ?? '';
-    final retailer = o['RetailerName'] ?? o['ShopName'] ?? '';
-    final isUrgent = o['IsUrgent'] == 1;
-
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Text(
-                            'Order #$orderId',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          if (isUrgent) ...[
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.red.shade50,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.bolt_rounded,
-                                    size: 12,
-                                    color: Colors.red.shade700,
-                                  ),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    'URGENT',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.red.shade700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      Text(
-                        retailer,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            // Info row
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _info(
-                      'Total',
-                      'LKR ${o['TotalPrice']?.toString() ?? '0'}',
-                    ),
-                  ),
-                  Expanded(
-                    child: _info(
-                      'Weight',
-                      '${o['TotalWeight']?.toString() ?? '0'} kg',
-                    ),
-                  ),
-                  Expanded(
-                    child: _info(
-                      'Delivery',
-                      (o['DeliveryDate'] ?? 'N/A').toString().split('T')[0],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            // Rejection reason
-            TextField(
-              controller: _reasonCtrl,
-              maxLines: 2,
-              decoration: InputDecoration(
-                labelText: 'Rejection reason (required to reject)',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            // Approve + Reject — NO partial
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _loading ? null : () => _submit('reject'),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: Colors.red.shade400),
-                      foregroundColor: Colors.red.shade700,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: _loading && _action == 'reject'
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text(
-                            'Reject',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _loading ? null : () => _submit('approve'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade600,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: _loading && _action == 'approve'
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text(
-                            'Approve',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _info(String label, String value) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        label,
-        style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-      ),
-      Text(
-        value,
-        style: const TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF1E293B),
-        ),
-      ),
-    ],
-  );
 }
 
 // ── Detail sheet — shows 7-stage timeline, WM can only close at stage 7 ───────

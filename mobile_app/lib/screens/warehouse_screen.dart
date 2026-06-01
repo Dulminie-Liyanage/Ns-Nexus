@@ -1,57 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:ns_nexus_mobile_app/screens/analiytics_dashboard_screen.dart';
-import 'package:ns_nexus_mobile_app/screens/audit_trail_screen.dart';
-import 'package:ns_nexus_mobile_app/screens/daily_report_list_screen.dart';
-import 'package:ns_nexus_mobile_app/screens/wm_dashboard_tab.dart';
 import 'inventory_tab.dart';
-import 'warehouse_orders_screen.dart';
-import 'disruption_banner.dart';
 import 'login_screen.dart';
 import '../services/auth_service.dart';
 
+// WM only owns Inventory — PO feedback
 class WarehouseScreen extends StatefulWidget {
   const WarehouseScreen({super.key});
-
   @override
   State<WarehouseScreen> createState() => _WarehouseScreenState();
 }
 
 class _WarehouseScreenState extends State<WarehouseScreen> {
-  int _currentIndex = 0;
-  String? _activeFilter;
-
-  Widget _buildBody() {
-    switch (_currentIndex) {
-      case 0:
-        return WMDashboardTab(
-          onTabChange: (index, {filter}) {
-            setState(() {
-              _currentIndex = index;
-              _activeFilter = filter;
-            });
-          },
-        );
-      case 1:
-        return const InventoryTab();
-      case 2:
-        // Use ValueKey so widget rebuilds when filter changes
-        return WarehouseOrdersScreen(
-          key: ValueKey(_activeFilter ?? 'all'),
-          initialFilter: _activeFilter,
-        );
-      case 3:
-        return const AuditTrailScreen();
-      case 4:
-        return const DailyReportListScreen();
-      case 5:
-        return const AnalyticsDashboardScreen(role: 'warehouse_manager');
-      case 6:
-        return const ManageDisruptionsScreen();
-      default:
-        return const SizedBox.shrink();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -64,12 +23,12 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
             height: 50, fit: BoxFit.contain),
         actions: [
           const CircleAvatar(
-            backgroundColor: Color(0xFFE2E8F0),
-            radius: 18,
-            child: Icon(Icons.person, color: Colors.black54, size: 20),
-          ),
+              backgroundColor: Color(0xFFE2E8F0),
+              radius: 18,
+              child: Icon(Icons.person, color: Colors.black54, size: 20)),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.black54),
+            tooltip: 'Logout',
             onPressed: () async {
               await AuthService().logout();
               if (!mounted) return;
@@ -80,28 +39,8 @@ class _WarehouseScreenState extends State<WarehouseScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: _buildBody(),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() {
-          _currentIndex = index;
-          if (index != 2) _activeFilter = null;
-        }),
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFFD4A017),
-        unselectedItemColor: Colors.grey.shade400,
-        selectedLabelStyle:
-            const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-        unselectedLabelStyle: const TextStyle(fontSize: 10),
-        items: const [
-          BottomNavigationBarItem(
-              icon: Icon(Icons.inventory_2_outlined), label: 'Inventory'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.local_shipping_outlined), label: 'Orders'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.add_alert_outlined), label: 'Disruptions'),
-        ],
-      ),
+      // WM only sees inventory management
+      body: const InventoryTab(),
     );
   }
 }

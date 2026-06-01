@@ -11,8 +11,8 @@ import 'driver_profile_screen.dart';
 import 'shipment_management_screen.dart';
 import 'audit_trail_screen.dart';
 import 'analiytics_dashboard_screen.dart';
-import 'driver_performance_screen.dart';
 import 'demand_analiysis_screen.dart';
+import 'driver_performance_screen.dart';
 import 'warehouse_orders_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -31,17 +31,26 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _handleLogin() async {
     if (_isLocked) return;
-    setState(() { _isLoading = true; _errorMessage = null; });
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
     try {
       final email = _emailController.text.trim();
       final password = _passwordController.text.trim();
 
       if (email.isEmpty || password.isEmpty) {
-        setState(() { _errorMessage = 'Please enter both email and password'; _isLoading = false; });
+        setState(() {
+          _errorMessage = 'Please enter both email and password';
+          _isLoading = false;
+        });
         return;
       }
       if (!RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(email)) {
-        setState(() { _errorMessage = 'Please enter a valid email address'; _isLoading = false; });
+        setState(() {
+          _errorMessage = 'Please enter a valid email address';
+          _isLoading = false;
+        });
         return;
       }
 
@@ -58,7 +67,10 @@ class _LoginScreenState extends State<LoginScreen> {
       // Save priority status for retailers — used to show/hide urgent order card
       // Backend returns priorityStatus as bool (true/false) — convert to '1'/'0'
       final ps = user['PriorityStatus'] ?? user['priorityStatus'] ?? false;
-      await prefs.setString('priorityStatus', (ps == true || ps == 1) ? '1' : '0');
+      await prefs.setString(
+        'priorityStatus',
+        (ps == true || ps == 1) ? '1' : '0',
+      );
       // Save userId so notification and analytics screens can use it
       final uid = user['UserID'] ?? user['userId'] ?? user['id'] ?? '';
       await prefs.setString('userId', uid.toString());
@@ -66,25 +78,41 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (role == 'retailer') {
-        Navigator.pushReplacement(context,
-            MaterialPageRoute(builder: (_) => const RetailerScreen()));
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const RetailerScreen()),
+        );
       } else if (role == 'warehouse_manager' || role == 'wm') {
-        Navigator.pushReplacement(context,
-            MaterialPageRoute(builder: (_) => const WarehouseScreen()));
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const WarehouseScreen()),
+        );
       } else if (role == 'admin') {
-        Navigator.pushReplacement(context,
-            MaterialPageRoute(builder: (_) => const AdminUserManagementScreen()));
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const AdminUserManagementScreen()),
+        );
       } else if (role == 'driver') {
-        Navigator.pushReplacement(context,
-            MaterialPageRoute(builder: (_) => const DriverHomeScreen()));
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const DriverHomeScreen()),
+        );
       } else if (role == 'sales_manager') {
-        Navigator.pushReplacement(context,
-            MaterialPageRoute(builder: (_) => const SalesManagerScreen()));
-      } else if (role == '3pl_manager' || role == 'logistics_manager' || role == 'lm') {
-        Navigator.pushReplacement(context,
-            MaterialPageRoute(builder: (_) => const LogisticsHomeScreen()));
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const SalesManagerScreen()),
+        );
+      } else if (role == '3pl_manager' ||
+          role == 'logistics_manager' ||
+          role == 'lm') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LogisticsHomeScreen()),
+        );
       } else {
-        setState(() => _errorMessage = 'Login failed — unrecognised role: "$role"');
+        setState(
+          () => _errorMessage = 'Login failed — unrecognised role: "$role"',
+        );
       }
     } on AuthException catch (e) {
       if (!mounted) return;
@@ -94,7 +122,9 @@ class _LoginScreenState extends State<LoginScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = e.toString().replaceFirst('Exception: ', ''));
+      setState(
+        () => _errorMessage = e.toString().replaceFirst('Exception: ', ''),
+      );
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -118,16 +148,31 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Center(child: Image.asset('assets/images/nestle_logo.png',
-                    height: 80, fit: BoxFit.contain)),
+                Center(
+                  child: Image.asset(
+                    'assets/images/nestle_logo.png',
+                    height: 80,
+                    fit: BoxFit.contain,
+                  ),
+                ),
                 const SizedBox(height: 48),
-                const Text('Sign In to Your Account',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold,
-                        color: textColor),
-                    textAlign: TextAlign.center),
+                const Text(
+                  'Sign In to Your Account',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: textColor,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
                 const SizedBox(height: 32),
-                const Text('Email',
-                    style: TextStyle(fontWeight: FontWeight.w600, color: textColor)),
+                const Text(
+                  'Email',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: textColor,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _emailController,
@@ -135,17 +180,26 @@ class _LoginScreenState extends State<LoginScreen> {
                   decoration: InputDecoration(
                     hintText: 'yourmail@gmail.com',
                     hintStyle: const TextStyle(color: subtleText),
-                    filled: true, fillColor: inputFillColor,
+                    filled: true,
+                    fillColor: inputFillColor,
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 16),
+                      horizontal: 16,
+                      vertical: 16,
+                    ),
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none),
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text('Password',
-                    style: TextStyle(fontWeight: FontWeight.w600, color: textColor)),
+                const Text(
+                  'Password',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: textColor,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _passwordController,
@@ -153,42 +207,66 @@ class _LoginScreenState extends State<LoginScreen> {
                   decoration: InputDecoration(
                     hintText: 'your password',
                     hintStyle: const TextStyle(color: subtleText),
-                    filled: true, fillColor: inputFillColor,
+                    filled: true,
+                    fillColor: inputFillColor,
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 16),
+                      horizontal: 16,
+                      vertical: 16,
+                    ),
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none),
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(children: [
-                      SizedBox(width: 24, height: 24,
-                          child: Checkbox(value: false, onChanged: (v) {},
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(4)))),
-                      const SizedBox(width: 8),
-                      const Text('Remember me',
-                          style: TextStyle(color: subtleText)),
-                    ]),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: Checkbox(
+                            value: false,
+                            onChanged: (v) {},
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Remember me',
+                          style: TextStyle(color: subtleText),
+                        ),
+                      ],
+                    ),
                     TextButton(
-                        onPressed: () {},
-                        child: const Text('Forgot Password',
-                            style: TextStyle(color: brandBlue,
-                                fontWeight: FontWeight.w600))),
+                      onPressed: () {},
+                      child: const Text(
+                        'Forgot Password',
+                        style: TextStyle(
+                          color: brandBlue,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 24),
                 if (_errorMessage != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 16),
-                    child: Text(_errorMessage!,
-                        style: const TextStyle(
-                            color: Colors.red, fontWeight: FontWeight.w600),
-                        textAlign: TextAlign.center),
+                    child: Text(
+                      _errorMessage!,
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ElevatedButton(
                   onPressed: (_isLoading || _isLocked) ? null : _handleLogin,
@@ -198,16 +276,26 @@ class _LoginScreenState extends State<LoginScreen> {
                     disabledBackgroundColor: brandBlue.withOpacity(0.5),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24)),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
                     elevation: 0,
                   ),
                   child: _isLoading
-                      ? const SizedBox(height: 24, width: 24,
+                      ? const SizedBox(
+                          height: 24,
+                          width: 24,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2.5, color: Colors.white))
-                      : const Text('Sign In',
-                          style: TextStyle(fontSize: 18,
-                              fontWeight: FontWeight.bold)),
+                            strokeWidth: 2.5,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Sign In',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                 ),
               ],
             ),
@@ -260,11 +348,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
-              icon: Icon(Icons.toggle_on_outlined), label: 'My Status'),
+            icon: Icon(Icons.toggle_on_outlined),
+            label: 'My Status',
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.route_outlined), label: 'Schedule'),
+            icon: Icon(Icons.route_outlined),
+            label: 'Schedule',
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline), label: 'Profile'),
+            icon: Icon(Icons.person_outline),
+            label: 'Profile',
+          ),
         ],
       ),
     );
@@ -284,36 +378,68 @@ class _LogisticsHomeScreenState extends State<LogisticsHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final tabs = [
-      const WarehouseOrdersScreen(),              // PO-01: full order pipeline
+      const WarehouseOrdersScreen(), // PO-01: full order pipeline
       const AuditTrailScreen(onlyShipped: false), // full audit trail for 3PL
-      const ShipmentManagementScreen(),           // shipment management
-      const DriverPerformanceScreen(),            // driver analytics
-      const DemandAnalysisScreen(),               // demand trends
+      const ShipmentManagementScreen(), // shipment management
+      const DriverPerformanceScreen(), // driver analytics
     ];
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        toolbarHeight: 80,
+        title: Image.asset(
+          'assets/images/nestle_logo.png',
+          height: 50,
+          fit: BoxFit.contain,
+        ),
+        actions: [
+          const CircleAvatar(
+            backgroundColor: Color(0xFFE2E8F0),
+            radius: 18,
+            child: Icon(Icons.person, color: Colors.black54, size: 20),
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.black54),
+            tooltip: 'Logout',
+            onPressed: () async {
+              await AuthService().logout();
+              if (!mounted) return;
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: IndexedStack(index: _currentIndex, children: tabs),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        onTap: (i) { if (i >= 0 && i < 5) setState(() => _currentIndex = i); },
+        onTap: (i) {
+          if (i >= 0 && i < 4) setState(() => _currentIndex = i);
+        },
         selectedItemColor: const Color(0xFF0056B3),
         unselectedItemColor: Colors.grey.shade400,
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(
-              icon: Icon(Icons.receipt_long_outlined),
-              label: 'Orders'),
+            icon: Icon(Icons.receipt_long_outlined),
+            label: 'Orders',
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.timeline_outlined),
-              label: 'Audit Trail'),
+            icon: Icon(Icons.timeline_outlined),
+            label: 'Audit Trail',
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.inventory_2_outlined),
-              label: 'Shipments'),
+            icon: Icon(Icons.inventory_2_outlined),
+            label: 'Shipments',
+          ),
           BottomNavigationBarItem(
-              icon: Icon(Icons.bar_chart_outlined),
-              label: 'Performance'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.trending_up_outlined),
-              label: 'Demand'),
+            icon: Icon(Icons.bar_chart_outlined),
+            label: 'Performance',
+          ),
         ],
       ),
     );

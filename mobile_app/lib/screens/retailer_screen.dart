@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:ns_nexus_mobile_app/screens/disruption_banner.dart'
+    show DisruptionBanner;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import 'login_screen.dart';
@@ -202,6 +204,10 @@ class _RetailerScreenState extends State<RetailerScreen> {
                 color: textColor,
               ),
             ),
+            // PO-02: Supply disruption warnings
+            const DisruptionBanner(),
+            const SizedBox(height: 8),
+
             const Text(
               'Welcome, Retailer',
               style: TextStyle(fontSize: 15, color: subtleText),
