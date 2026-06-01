@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/inventory_service.dart';
 
 class ProductFormScreen extends StatefulWidget {
-  final Map<String, dynamic>? product; // null = Add mode, non-null = Edit mode
+  final Map<String, dynamic>? product; // null = create, non-null = edit
   const ProductFormScreen({super.key, this.product});
 
   @override
@@ -10,375 +11,365 @@ class ProductFormScreen extends StatefulWidget {
 }
 
 class _ProductFormScreenState extends State<ProductFormScreen> {
-  final InventoryService _inventoryService = InventoryService();
   final _formKey = GlobalKey<FormState>();
+  final _svc = InventoryService();
 
-  late TextEditingController _nameController;
-  late TextEditingController _skuController;
-  late TextEditingController _priceController;
-  late TextEditingController _weightController;
-  late TextEditingController _unitController;
+  late final TextEditingController _name;
+  late final TextEditingController _sku;
+  late final TextEditingController _unit;
+  late final TextEditingController _price;
+  late final TextEditingController _weight;
+  late final TextEditingController _stock;
+  bool _isAvailable = true;
+  bool _loading = false;
 
-  bool _isSubmitting = false;
-  bool get _isEditMode => widget.product != null;
-
-  // Custom Colors
-  final Color primaryBlue = const Color(0xFF3B82F6);
-  final Color textDark = const Color(0xFF1F2937);
-  final Color textLight = const Color(0xFF6B7280);
-  final Color borderLight = const Color(0xFFE5E7EB);
-  final Color bgLight = const Color(0xFFF9FAFB);
+  bool get _isEdit => widget.product != null;
 
   @override
   void initState() {
     super.initState();
     final p = widget.product;
-    _nameController = TextEditingController(
-      text: p?['ProductName']?.toString() ?? '',
+    _name = TextEditingController(text: p?['ProductName']?.toString() ?? '');
+    _sku = TextEditingController(text: p?['SKU']?.toString() ?? '');
+    _unit = TextEditingController(text: p?['Unit']?.toString() ?? '');
+    _price = TextEditingController(text: p?['Price']?.toString() ?? '');
+    _weight = TextEditingController(text: p?['Weight']?.toString() ?? '');
+    // Handle null StockLevel gracefully
+    final stock = p?['StockLevel'];
+    _stock = TextEditingController(
+      text: stock != null ? stock.toString() : '0',
     );
-    _skuController = TextEditingController(text: p?['SKU']?.toString() ?? '');
-    _priceController = TextEditingController(
-      text: p?['Price']?.toString() ?? '',
-    );
-    _weightController = TextEditingController(
-      text: (p?['Weight'] ?? p?['weight'] ?? '').toString(),
-    );
-    _unitController = TextEditingController(
-      text: p?['Unit']?.toString() ?? 'box',
-    );
+    _isAvailable = (p?['IsAvailable'] == 1 || p?['IsAvailable'] == true);
   }
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _skuController.dispose();
-    _priceController.dispose();
-    _weightController.dispose();
-    _unitController.dispose();
+    _name.dispose();
+    _sku.dispose();
+    _unit.dispose();
+    _price.dispose();
+    _weight.dispose();
+    _stock.dispose();
     super.dispose();
   }
 
-  Future<void> _submitForm() async {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isSubmitting = true);
-
-    // Use replaceAll(',', '.') to handle locale specific decimal formats
-    final priceStr = _priceController.text.trim().replaceAll(',', '.');
-    final weightStr = _weightController.text.trim().replaceAll(',', '.');
-
-    final data = {
-      'ProductName': _nameController.text.trim(),
-      'SKU': _skuController.text.trim(),
-      'Price': double.tryParse(priceStr) ?? 0.0,
-      'Weight': double.tryParse(weightStr) ?? 0.0,
-      'Unit': _unitController.text.trim(),
-    };
-
+    setState(() => _loading = true);
     try {
-      if (_isEditMode) {
-        final productId =
-            widget.product!['ProductID'] ??
-            widget.product!['productId'] ??
-            widget.product!['id'];
-        await _inventoryService.updateProduct(productId, data);
+      if (_isEdit) {
+        await _svc.updateProduct(
+          productId: widget.product!['ProductID'],
+          productName: _name.text.trim(),
+          sku: _sku.text.trim(),
+          unit: _unit.text.trim(),
+          price: double.tryParse(_price.text) ?? 0,
+          weight: double.tryParse(_weight.text) ?? 0,
+          stockLevel: int.tryParse(_stock.text) ?? 0,
+          isAvailable: _isAvailable ? 1 : 0,
+        );
       } else {
-        await _inventoryService.createProduct(data);
+        await _svc.createProduct(
+          productName: _name.text.trim(),
+          sku: _sku.text.trim(),
+          unit: _unit.text.trim(),
+          price: double.tryParse(_price.text) ?? 0,
+          weight: double.tryParse(_weight.text) ?? 0,
+          stockLevel: int.tryParse(_stock.text) ?? 0,
+        );
       }
-
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _isEditMode
-                ? 'Product updated successfully'
-                : 'Product created successfully',
-          ),
-          backgroundColor: const Color(0xFF059669),
-        ),
-      );
-      Navigator.pop(context, true);
+      if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (!mounted) return;
-      String errorMsg = e.toString().replaceFirst('Exception: ', '');
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $errorMsg'),
-          backgroundColor: const Color(0xFFDC2626),
-          duration: const Duration(seconds: 4),
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _isSubmitting = false);
-    }
-  }
-
-  InputDecoration _customInputDecoration(String label, IconData icon) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: TextStyle(color: textLight, fontSize: 14),
-      prefixIcon: Icon(icon, color: textLight, size: 20),
-      filled: true,
-      fillColor: const Color(0xFFF9FAFB),
-      contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: borderLight),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: primaryBlue, width: 2),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFDC2626)),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Color(0xFFDC2626), width: 2),
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader(String title, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16, top: 4),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: primaryBlue),
-          const SizedBox(width: 8),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: textDark,
-            ),
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
           ),
-        ],
-      ),
-    );
+        );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: bgLight,
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
         title: Text(
-          _isEditMode ? 'Edit Product' : 'Add New Product',
-          style: TextStyle(
-            color: textDark,
-            fontWeight: FontWeight.w600,
+          _isEdit ? 'Edit Product' : 'Add Product',
+          style: const TextStyle(
+            color: Color(0xFF1E293B),
+            fontWeight: FontWeight.w700,
             fontSize: 18,
           ),
         ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: IconThemeData(color: textDark),
-        centerTitle: true,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(color: borderLight, height: 1),
-        ),
+        iconTheme: const IconThemeData(color: Color(0xFF1E293B)),
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 24,
-                ),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _card(
+                children: [
+                  const _SectionTitle('Product Info'),
+                  _field(
+                    _name,
+                    'Product Name *',
+                    validator: (v) => v!.trim().isEmpty ? 'Required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
                     children: [
-                      // Basic Info Section
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: borderLight),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.015),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildSectionHeader(
-                              'Basic Information',
-                              Icons.info_outline,
-                            ),
-                            TextFormField(
-                              controller: _nameController,
-                              style: TextStyle(
-                                color: textDark,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              decoration: _customInputDecoration(
-                                'Product Name',
-                                Icons.label_outline,
-                              ),
-                              validator: (v) => (v == null || v.trim().isEmpty)
-                                  ? 'Required'
-                                  : null,
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _skuController,
-                              style: TextStyle(
-                                color: textDark,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              decoration: _customInputDecoration(
-                                'SKU',
-                                Icons.qr_code_2,
-                              ),
-                              validator: (v) => (v == null || v.trim().isEmpty)
-                                  ? 'Required'
-                                  : null,
-                            ),
-                          ],
+                      Expanded(
+                        child: _field(
+                          _sku,
+                          'SKU *',
+                          validator: (v) =>
+                              v!.trim().isEmpty ? 'Required' : null,
                         ),
                       ),
-
-                      const SizedBox(height: 24),
-
-                      // Pricing & Inventory Section
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: borderLight),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.015),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildSectionHeader(
-                              'Pricing & Inventory',
-                              Icons.inventory_2_outlined,
-                            ),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextFormField(
-                                    controller: _priceController,
-                                    style: TextStyle(
-                                      color: textDark,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    keyboardType: TextInputType.number,
-                                    decoration: _customInputDecoration(
-                                      'Price (LKR)',
-                                      Icons.attach_money,
-                                    ),
-                                    validator: (v) =>
-                                        (v == null || v.trim().isEmpty)
-                                        ? 'Required'
-                                        : null,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: TextFormField(
-                                    controller: _weightController,
-                                    style: TextStyle(
-                                      color: textDark,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    keyboardType: TextInputType.number,
-                                    decoration: _customInputDecoration(
-                                      'Weight (kg)',
-                                      Icons.scale_outlined,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _unitController,
-                              style: TextStyle(
-                                color: textDark,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              decoration: _customInputDecoration(
-                                'Unit Type',
-                                Icons.category_outlined,
-                              ),
-                            ),
-                          ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _field(
+                          _unit,
+                          'Unit (kg/box/pack)',
+                          validator: (v) =>
+                              v!.trim().isEmpty ? 'Required' : null,
                         ),
                       ),
                     ],
                   ),
-                ),
+                ],
               ),
-            ),
+              const SizedBox(height: 16),
 
-            // Bottom Save Bar
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: borderLight)),
+              _card(
+                children: [
+                  const _SectionTitle('Pricing & Weight'),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _field(
+                          _price,
+                          'Price (LKR) *',
+                          keyboard: TextInputType.number,
+                          formatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'[0-9.]'),
+                            ),
+                          ],
+                          validator: (v) {
+                            if (v!.trim().isEmpty) return 'Required';
+                            if (double.tryParse(v) == null) return 'Invalid';
+                            return null;
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _field(
+                          _weight,
+                          'Weight (kg) *',
+                          keyboard: TextInputType.number,
+                          formatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'[0-9.]'),
+                            ),
+                          ],
+                          validator: (v) {
+                            if (v!.trim().isEmpty) return 'Required';
+                            if (double.tryParse(v) == null) return 'Invalid';
+                            return null;
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              child: SafeArea(
-                top: false,
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isSubmitting ? null : _submitForm,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryBlue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+              const SizedBox(height: 16),
+
+              _card(
+                children: [
+                  const _SectionTitle('Stock'),
+                  _field(
+                    _stock,
+                    'Stock Level',
+                    keyboard: TextInputType.number,
+                    formatters: [FilteringTextInputFormatter.digitsOnly],
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _isAvailable
+                          ? Colors.green.shade50
+                          : Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: _isAvailable
+                            ? Colors.green.shade200
+                            : Colors.grey.shade300,
                       ),
                     ),
-                    child: _isSubmitting
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2.5,
-                            ),
-                          )
-                        : Text(
-                            _isEditMode ? 'Save Changes' : 'Create Product',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _isAvailable
+                              ? Icons.check_circle_outline
+                              : Icons.remove_circle_outline,
+                          color: _isAvailable
+                              ? Colors.green.shade600
+                              : Colors.grey,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Available to Retailers',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                  color: _isAvailable
+                                      ? Colors.green.shade800
+                                      : Colors.black87,
+                                ),
+                              ),
+                              Text(
+                                _isAvailable
+                                    ? 'Visible in retailer order screen'
+                                    : 'Hidden from retailer order screen',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
                           ),
+                        ),
+                        Switch(
+                          value: _isAvailable,
+                          activeColor: Colors.green.shade600,
+                          onChanged: (v) => setState(() => _isAvailable = v),
+                        ),
+                      ],
+                    ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 28),
+
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _loading ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0056B3),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: _loading
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : Text(
+                          _isEdit ? 'Save Changes' : 'Add Product',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 24),
+            ],
+          ),
         ),
       ),
     );
   }
+
+  Widget _card({required List<Widget> children}) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: Colors.grey.shade200),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withAlpha(5),
+          blurRadius: 6,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    ),
+  );
+
+  Widget _field(
+    TextEditingController ctrl,
+    String label, {
+    TextInputType keyboard = TextInputType.text,
+    List<TextInputFormatter>? formatters,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: ctrl,
+      keyboardType: keyboard,
+      inputFormatters: formatters,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: Colors.grey.shade300),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  final String text;
+  const _SectionTitle(this.text);
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 14),
+    child: Text(
+      text,
+      style: const TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w700,
+        color: Color(0xFF1E293B),
+      ),
+    ),
+  );
 }
