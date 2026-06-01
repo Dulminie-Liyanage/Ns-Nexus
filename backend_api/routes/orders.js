@@ -83,21 +83,42 @@ function _placeOrder(req, res, retailer_id, delivery_date, is_urgent, items) {
 
                 // PO-05: Check if this order is anomalous vs retailer's historical average
                 db.query(
-                    `SELECT COALESCE(AVG(o.TotalWeight), 0) AS avgWeight,
-                            COALESCE(AVG(
-                                (SELECT SUM(oi2.QtyRequested) FROM order_items oi2 WHERE oi2.OrderID = o.OrderID)
-                            ), 0) AS avgQty
+                    `SELECT
+                        COALESCE(AVG(
+                            (SELECT SUM(oi2.QtyRequested) FROM order_items oi2 WHERE oi2.OrderID = o.OrderID)
+                        ), 0) AS avgQty,
+                        COALESCE(AVG(o.TotalPrice), 0) AS avgPrice
                      FROM orders o
-                     WHERE o.RetailerID = ? AND o.Status NOT IN ('rejected','flagged_for_review')
+                     WHERE o.RetailerID = ?
+                     AND o.Status NOT IN ('rejected','flagged_for_review')
                      AND o.CreatedAt >= DATE_SUB(NOW(), INTERVAL 90 DAY)`,
                     [retailer_id], (avgErr, avgRows) => {
-                        // PO-05: Flag any order over 100 units total
-                        const isFlagged = totalQty > 100;
-                        const flagReason = isFlagged
-                            ? `Unusual order volume: ${totalQty} units exceeds the 100 unit threshold`
-                            : null;
+                        const avgQty = parseFloat(avgRows?.[0]?.avgQty) || 0;
+                        const avgPrice = parseFloat(avgRows?.[0]?.avgPrice) || 0;
 
-                        console.log(`[ORDER] RetailerID=${retailer_id} totalQty=${totalQty} isFlagged=${isFlagged}`);
+                        let isFlagged = false;
+                        let flagReason = null;
+
+                        if (avgQty > 10) {
+                            // Has enough history — flag if 3x above average qty
+                            if (totalQty > avgQty * 3) {
+                                isFlagged = true;
+                                flagReason = `Order quantity (${totalQty} units) is ${Math.round(totalQty/avgQty)}x above your usual order (avg: ${Math.round(avgQty)} units)`;
+                            }
+                            // Also flag if order value is 5x above average spend
+                            else if (avgPrice > 0 && totalPrice > avgPrice * 5) {
+                                isFlagged = true;
+                                flagReason = `Order value (LKR ${Math.round(totalPrice)}) is unusually high compared to your average spend (avg: LKR ${Math.round(avgPrice)})`;
+                            }
+                        } else {
+                            // New retailer with little history — flag if order value > LKR 50,000
+                            if (totalPrice > 50000) {
+                                isFlagged = true;
+                                flagReason = `Large order value (LKR ${Math.round(totalPrice)}) flagged for new retailer review`;
+                            }
+                        }
+
+                        console.log(`[ORDER] RetailerID=${retailer_id} totalQty=${totalQty} avgQty=${avgQty} totalPrice=${totalPrice} isFlagged=${isFlagged}`);
 
                         const newStatus = isFlagged ? 'flagged_for_review' : 'approved';
 
@@ -107,17 +128,24 @@ function _placeOrder(req, res, retailer_id, delivery_date, is_urgent, items) {
                             [retailer_id], (mapErr, mapRows) => {
                                 const distributorId = mapRows?.[0]?.DistributorID || null;
 
+                                // Ensure flagging columns exist before using them
+                                db.query(`ALTER TABLE orders
+                                    ADD COLUMN IF NOT EXISTS IsFlagged TINYINT DEFAULT 0,
+                                    ADD COLUMN IF NOT EXISTS FlagReason VARCHAR(255) NULL,
+                                    ADD COLUMN IF NOT EXISTS FlaggedAt DATETIME NULL,
+                                    ADD COLUMN IF NOT EXISTS AutoApprovedAt DATETIME NULL,
+                                    ADD COLUMN IF NOT EXISTS ReleasedAt DATETIME NULL,
+                                    ADD COLUMN IF NOT EXISTS ReleasedBy INT NULL`, [], () => {});
+
                                 db.query(
                                     `UPDATE orders SET
                                         Status = ?,
                                         CurrentStage = ?,
                                         TotalPrice = ?,
                                         TotalWeight = ?,
-                                        AutoApprovedAt = NOW(),
                                         IsFlagged = ?,
                                         FlagReason = ?,
-                                        FlaggedAt = ?,
-                                        DriverID = ?
+                                        FlaggedAt = ?
                                      WHERE OrderID = ?`,
                                     [
                                         newStatus,
@@ -126,7 +154,6 @@ function _placeOrder(req, res, retailer_id, delivery_date, is_urgent, items) {
                                         isFlagged ? 1 : 0,
                                         flagReason,
                                         isFlagged ? new Date() : null,
-                                        distributorId,
                                         orderID
                                     ], (updateErr) => {
                                         if (updateErr) console.error('Order update failed', updateErr);
@@ -309,6 +336,30 @@ router.get('/retailer/:id', (req, res) => {
 });
 
 // GET /orders/:id/items - get items for a specific order
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PO-05: Sales Manager flagged orders queue
+// GET /orders/flagged — all orders flagged for review
+// ─────────────────────────────────────────────────────────────────────────────
+router.get('/flagged', (req, res) => {
+    db.query(
+        `SELECT o.OrderID, o.RetailerID, o.Status, o.IsUrgent,
+                o.TotalPrice, o.TotalWeight, o.CreatedAt,
+                COALESCE(o.IsFlagged, 0) as IsFlagged,
+                COALESCE(o.FlagReason, '') as FlagReason,
+                o.FlaggedAt,
+                u.Name as RetailerName, u.ShopName, u.District
+         FROM orders o
+         JOIN users u ON o.RetailerID = u.UserID
+         WHERE o.Status = 'flagged_for_review'
+         ORDER BY o.CreatedAt DESC`,
+        [], (err, rows) => {
+            if (err) return res.status(500).json({ message: 'DB error', error: err.message });
+            res.json({ orders: rows || [] });
+        }
+    );
+});
+
 router.get('/:id/items', (req, res) => {
     const orderID = req.params.id;
     const query = `
@@ -761,24 +812,6 @@ router.get('/retailer/:id/templates', (req, res) => {
     );
 });
 
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PO-05: Sales Manager flagged orders queue
-// GET /orders/flagged — all orders flagged for review
-// ─────────────────────────────────────────────────────────────────────────────
-router.get('/flagged', (req, res) => {
-    db.query(
-        `SELECT o.*, u.Name as RetailerName, u.ShopName, u.District
-         FROM orders o
-         JOIN users u ON o.RetailerID = u.UserID
-         WHERE o.IsFlagged = 1 AND o.Status = 'flagged_for_review'
-         ORDER BY o.FlaggedAt DESC`,
-        [], (err, rows) => {
-            if (err) return res.status(500).json({ message: 'DB error', error: err.message });
-            res.json({ orders: rows || [] });
-        }
-    );
-});
 
 // PUT /orders/:id/release — Sales Manager releases flagged order
 router.put('/:id/release', (req, res) => {
