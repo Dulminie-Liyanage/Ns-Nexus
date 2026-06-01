@@ -91,26 +91,13 @@ function _placeOrder(req, res, retailer_id, delivery_date, is_urgent, items) {
                      WHERE o.RetailerID = ? AND o.Status NOT IN ('rejected','flagged_for_review')
                      AND o.CreatedAt >= DATE_SUB(NOW(), INTERVAL 90 DAY)`,
                     [retailer_id], (avgErr, avgRows) => {
-                        const avgQty = parseFloat(avgRows?.[0]?.avgQty) || 0;
+                        // PO-05: Flag any order over 100 units total
+                        const isFlagged = totalQty > 100;
+                        const flagReason = isFlagged
+                            ? `Unusual order volume: ${totalQty} units exceeds the 100 unit threshold`
+                            : null;
 
-                        let isFlagged = false;
-                        let flagReason = null;
-
-                        if (avgQty > 0) {
-                            // Has history — flag if 3x above average
-                            if (totalQty > avgQty * 3) {
-                                isFlagged = true;
-                                flagReason = `Order qty (${totalQty}) is ${Math.round(totalQty/avgQty)}x above retailer avg (${Math.round(avgQty)})`;
-                            }
-                        } else {
-                            // No history — flag if order exceeds 100 units (absolute threshold)
-                            if (totalQty > 100) {
-                                isFlagged = true;
-                                flagReason = `Large first-time order (${totalQty} units) flagged for review`;
-                            }
-                        }
-
-                        console.log(`[ORDER] RetailerID=${retailer_id} totalQty=${totalQty} avgQty=${avgQty} isFlagged=${isFlagged}`);
+                        console.log(`[ORDER] RetailerID=${retailer_id} totalQty=${totalQty} isFlagged=${isFlagged}`);
 
                         const newStatus = isFlagged ? 'flagged_for_review' : 'approved';
 

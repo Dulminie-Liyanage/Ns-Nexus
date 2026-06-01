@@ -97,14 +97,15 @@ router.patch('/:id/read', async (req, res) => {
 // logNotification(retailerId, orderId, stageName)
 // ─────────────────────────────────────────────────────────────────────────────
 const stageMessages = {
-  'pending':          { title: '📋 Order Received',         msg: 'Your order #{id} has been received and is being reviewed.' },
-  'approved':         { title: '✅ Order Approved',          msg: 'Great news! Order #{id} has been approved by the warehouse.' },
-  'rejected':         { title: '❌ Order Rejected',          msg: 'Order #{id} has been rejected. Check the rejection reason for details.' },
-  'packing':          { title: '📦 Order Being Packed',      msg: 'Order #{id} is now being packed and prepared for shipment.' },
-  'in_3pl_transit':   { title: '🚛 In Transit',              msg: 'Order #{id} is on its way to the distribution hub.' },
-  'ready_to_ship':    { title: '📬 Ready to Ship',           msg: 'Order #{id} is ready for final delivery to you.' },
-  'out_for_delivery': { title: '🚚 Out for Delivery',        msg: 'Your order #{id} is out for delivery today! Get ready.' },
-  'delivered':        { title: '🎉 Order Delivered',         msg: 'Order #{id} has been delivered. Thank you for ordering with Nestlé!' },
+  'pending':             { title: '📋 Order Received',         msg: 'Your order #{id} has been received by the system.' },
+  'approved':            { title: '✅ Order Confirmed',         msg: 'Your order #{id} has been confirmed and forwarded to your 3PL distributor.' },
+  'flagged_for_review':  { title: '⚠️ Order Under Review',     msg: 'Your order #{id} has been flagged for review due to unusual quantity. Our Sales Manager will process it shortly.' },
+  'rejected':            { title: '❌ Order Held',              msg: 'Order #{id} has been held by the Sales Manager. Please contact your distributor for details.' },
+  'packing':             { title: '📦 Order Being Packed',      msg: 'Good news! Order #{id} has reached the Nestlé warehouse and is being packed.' },
+  'in_3pl_transit':      { title: '🚛 In Transit',              msg: 'Order #{id} is on its way from the warehouse to your 3PL distributor.' },
+  'ready_to_ship':       { title: '📬 Ready for Delivery',      msg: 'Order #{id} is ready and will be dispatched to you soon.' },
+  'out_for_delivery':    { title: '🚚 Out for Delivery',        msg: 'Your order #{id} is out for delivery today! Expect it shortly.' },
+  'delivered':           { title: '🎉 Order Delivered',         msg: 'Order #{id} has been delivered successfully. Thank you for ordering with Nestlé!' },
 };
 
 async function logNotification(retailerId, orderId, status) {

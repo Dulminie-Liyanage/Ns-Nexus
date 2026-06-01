@@ -86,11 +86,11 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
         int.tryParse(order['CurrentStage']?.toString() ?? '1') ?? 1;
     final status = (order['Status'] ?? '').toString().toLowerCase();
     final stageLabels = {
-      1: 'Pending',
-      2: 'Approved',
-      3: 'Packing',
-      4: 'In 3PL Transit',
-      5: 'Ready to Ship',
+      1: 'Order Placed',
+      2: 'Received by 3PL',
+      3: 'At Warehouse',
+      4: 'Packing',
+      5: 'Dispatched to 3PL',
       6: 'Out for Delivery',
       7: 'Delivered',
     };
@@ -195,11 +195,11 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
   Future<void> _applyBatchOverride() async {
     if (_selectedOrderIds.isEmpty || _batchTargetStage == null) return;
     final stageLabels = <int, String>{
-      1: 'Pending',
-      2: 'Approved',
-      3: 'Packing',
-      4: 'In 3PL Transit',
-      5: 'Ready to Ship',
+      1: 'Order Placed',
+      2: 'Received by 3PL',
+      3: 'At Warehouse',
+      4: 'Packing',
+      5: 'Dispatched to 3PL',
       6: 'Out for Delivery',
       7: 'Delivered',
     };
@@ -336,11 +336,11 @@ class _WarehouseOrdersScreenState extends State<WarehouseOrdersScreen>
                                     isDense: true,
                                     items:
                                         {
-                                              1: 'Pending',
-                                              2: 'Approved',
-                                              3: 'Packing',
-                                              4: 'In 3PL Transit',
-                                              5: 'Ready',
+                                              1: 'Order Placed',
+                                              2: 'Received by 3PL',
+                                              3: 'At Warehouse',
+                                              4: 'Packing',
+                                              5: 'Dispatched to 3PL',
                                               6: 'Out for Delivery',
                                               7: 'Delivered',
                                             }.entries
@@ -542,6 +542,8 @@ class _OrderCard extends StatelessWidget {
         return const Color(0xFF16A34A);
       case 'rejected':
         return const Color(0xFFDC2626);
+      case 'flagged_for_review':
+        return const Color(0xFFEA580C);
       case 'pending':
         return const Color(0xFFEA580C);
       case 'packing':
@@ -788,21 +790,21 @@ class _OrderDetailSheetState extends State<_OrderDetailSheet> {
   bool _advancing = false;
 
   static const _stageLabels = [
-    'Pending',
-    'Approved / Rejected',
+    'Order Placed',
+    'Received by 3PL',
+    'At Warehouse',
     'Packing',
-    'In 3PL Transit',
-    'Ready to Ship',
+    'Dispatched to 3PL',
     'Out for Delivery',
     'Delivered',
   ];
 
   static const _stageActors = [
     'Retailer',
+    '3PL Distributor',
     'Warehouse Manager',
-    '3PL Manager',
-    '3PL Manager',
-    '3PL Manager',
+    'Warehouse Manager',
+    '3PL Distributor',
     'Delivery Driver',
     'Delivery Driver',
   ];

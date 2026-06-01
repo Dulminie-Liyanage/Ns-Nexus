@@ -18,17 +18,23 @@ class AuditTrailWidget extends StatelessWidget {
   });
 
   static const _stages = [
-    // US-14: Pending → Approved → Packing → In 3PL Transit → Ready to Ship → Out for Delivery → Delivered
+    // New flow: Retailer → 3PL → Warehouse → 3PL → Retailer
     _StageInfo(
-      'Pending',
-      'Retailer submitted the order',
+      'Order Placed',
+      'Retailer submitted order — auto approved',
       Icons.shopping_cart_outlined,
       'Retailer',
     ),
     _StageInfo(
-      'Approved / Rejected',
-      'Warehouse Manager reviewed order',
-      Icons.verified_outlined,
+      'Received by 3PL',
+      '3PL distributor received the order',
+      Icons.handshake_outlined,
+      '3PL Distributor',
+    ),
+    _StageInfo(
+      'At Warehouse',
+      'Order arrived at Nestlé warehouse',
+      Icons.warehouse_outlined,
       'Warehouse Manager',
     ),
     _StageInfo(
@@ -38,16 +44,10 @@ class AuditTrailWidget extends StatelessWidget {
       'Warehouse Manager',
     ),
     _StageInfo(
-      'In 3PL Transit',
-      'Handed to 3PL for transit',
+      'Dispatched to 3PL',
+      'Packed order handed back to 3PL',
       Icons.local_shipping_outlined,
-      '3PL Manager',
-    ),
-    _StageInfo(
-      'Ready to Ship',
-      'Order ready for final delivery',
-      Icons.inventory_outlined,
-      '3PL Manager',
+      '3PL Distributor',
     ),
     _StageInfo(
       'Out for Delivery',
@@ -57,7 +57,7 @@ class AuditTrailWidget extends StatelessWidget {
     ),
     _StageInfo(
       'Delivered',
-      'Order delivered successfully',
+      'Order delivered to retailer successfully',
       Icons.check_circle_outline,
       'Delivery Driver',
     ),
@@ -73,7 +73,8 @@ class AuditTrailWidget extends StatelessWidget {
         final info = _stages[i];
         final isDone = stage <= currentStage;
         final isCurrent = stage == currentStage;
-        final isRejectedStage = isRejected && stage == 2;
+        final isRejectedStage =
+            false; // PO-03: No rejection — orders auto-approved
         final isLast = i == _stages.length - 1;
 
         Color stageColor;

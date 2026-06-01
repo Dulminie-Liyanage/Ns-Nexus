@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import '../services/order_service.dart';
 import '../services/shipment_service.dart';
 import '../services/driver_service.dart';
-import '../services/auth_service.dart';
-import 'login_screen.dart';
 
 class ShipmentManagementScreen extends StatefulWidget {
   /// [initialTab]: 0 = Create Shipment, 1 = Shipment Status
@@ -41,32 +39,7 @@ class _ShipmentManagementScreenState extends State<ShipmentManagementScreen>
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        toolbarHeight: 80,
         automaticallyImplyLeading: false,
-        title: Image.asset(
-          'assets/images/nestle_logo.png',
-          height: 50,
-          fit: BoxFit.contain,
-        ),
-        actions: [
-          const CircleAvatar(
-            backgroundColor: Color(0xFFE2E8F0),
-            radius: 18,
-            child: Icon(Icons.person, color: Colors.black54, size: 20),
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.black54),
-            onPressed: () async {
-              await AuthService().logout();
-              if (!mounted) return;
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              );
-            },
-          ),
-          const SizedBox(width: 8),
-        ],
         bottom: TabBar(
           controller: _tabs,
           labelColor: const Color(0xFF0056B3),
